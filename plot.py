@@ -365,8 +365,8 @@ def chart3_fidelity_lines(rows: List[dict], output_dir: str):
                     linewidth=2, capsize=4, color=color,
                     label=f"{dist} km")
 
-    ax.axhline(y=0.8, color=C_THRESH, linestyle="--", linewidth=1.8,
-               label=r"$F_{th}$ = 0.8")
+    ax.axhline(y=0.7, color=C_THRESH, linestyle="--", linewidth=1.8,
+               label=r"$F_{th}$ = 0.7")
 
     ax.set_xlabel("Hop distance from QDC")
     ax.set_ylabel("End-to-end fidelity")
@@ -375,9 +375,9 @@ def chart3_fidelity_lines(rows: List[dict], output_dir: str):
     ax.legend(loc="lower left", framealpha=0.9)
 
     # Caption
-    fig.text(0.5, -0.03, "ODO produces statistically indistinguishable fidelity "
-             "(scheduling-only algorithmic difference).",
-             ha="center", fontsize=9, color="#444", style="italic")
+    # fig.text(0.5, -0.03, "ODO produces statistically indistinguishable fidelity "
+    #          "(scheduling-only algorithmic difference).",
+    #          ha="center", fontsize=9, color="#444", style="italic")
 
     path = os.path.join(output_dir, "chart3_fidelity_lines.png")
     fig.savefig(path, dpi=200, bbox_inches="tight")
