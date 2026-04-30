@@ -1,0 +1,40 @@
+# QPQ Evaluation Framework — Default Configuration
+# All times in seconds unless noted. SeQUeNCe uses picoseconds internally.
+
+hardware:
+  # Memory / link parameters (from ACP paper Table I)
+  link_fidelity: 0.99             # raw entanglement fidelity
+  memory_efficiency: 0.5          # photon emission success probability
+  memory_coherence_time_s: 5.0    # memory T2 time (seconds)
+  memories_per_node: 50           # total quantum memories per router
+  acp_memory: 6                   # memories reserved for ACP (0 = ODO only)
+  gate_fidelity: 0.99
+  measurement_fidelity: 0.99
+  purify: true                    # enable entanglement purification
+
+workload:
+  mode: "qpq"
+  database_size_log: 10
+  num_clients: 10
+  queries_per_client: 3
+  round_deadline_s: 5.0
+  reservation_duration_s: 5.0     # was 15 — tighten so resources free sooner
+  request_period_s: 6.0           # was 1 — space out so queries don't overlap
+  start_offset_s: 2.0
+  fidelity_threshold: 0.7
+
+topology:
+  type: "hub_spoke"
+  num_nodes: 30
+  inter_node_distance_m: 20000.0
+  qdc_node_index: 15
+  random_seed: 42
+  extra_mesh_edges: 3
+
+experiment:
+  backends:
+    - "odo"
+    - "acp"
+  num_trials: 1
+  simulation_end_time_s: 180.0
+  output_dir: "output"

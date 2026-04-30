@@ -1,0 +1,4277 @@
+{
+  "templates": {
+    "default_template": {
+      "MemoryArray": {
+        "fidelity": 0.99,
+        "efficiency": 0.5,
+        "coherence_time": 5.0
+      },
+      "adaptive_max_memory": 6,
+      "encoding_type": "single_heralded",
+      "decoherence_errors": [
+        0.3333333333333333,
+        0.3333333333333333,
+        0.3333333333333333
+      ]
+    }
+  },
+  "nodes": [
+    {
+      "name": "router_0",
+      "type": "QuantumRouter",
+      "seed": 844009487,
+      "memo_size": 50,
+      "template": "default_template",
+      "gate_fidelity": 0.99,
+      "measurement_fidelity": 0.99
+    },
+    {
+      "name": "router_1",
+      "type": "QuantumRouter",
+      "seed": 1043443646,
+      "memo_size": 50,
+      "template": "default_template",
+      "gate_fidelity": 0.99,
+      "measurement_fidelity": 0.99
+    },
+    {
+      "name": "router_2",
+      "type": "QuantumRouter",
+      "seed": 711455853,
+      "memo_size": 50,
+      "template": "default_template",
+      "gate_fidelity": 0.99,
+      "measurement_fidelity": 0.99
+    },
+    {
+      "name": "router_3",
+      "type": "QuantumRouter",
+      "seed": 762746813,
+      "memo_size": 50,
+      "template": "default_template",
+      "gate_fidelity": 0.99,
+      "measurement_fidelity": 0.99
+    },
+    {
+      "name": "router_4",
+      "type": "QuantumRouter",
+      "seed": 1464433627,
+      "memo_size": 50,
+      "template": "default_template",
+      "gate_fidelity": 0.99,
+      "measurement_fidelity": 0.99
+    },
+    {
+      "name": "router_5",
+      "type": "QuantumRouter",
+      "seed": 1207192971,
+      "memo_size": 50,
+      "template": "default_template",
+      "gate_fidelity": 0.99,
+      "measurement_fidelity": 0.99
+    },
+    {
+      "name": "router_6",
+      "type": "QuantumRouter",
+      "seed": 602562983,
+      "memo_size": 50,
+      "template": "default_template",
+      "gate_fidelity": 0.99,
+      "measurement_fidelity": 0.99
+    },
+    {
+      "name": "router_7",
+      "type": "QuantumRouter",
+      "seed": 737224358,
+      "memo_size": 50,
+      "template": "default_template",
+      "gate_fidelity": 0.99,
+      "measurement_fidelity": 0.99
+    },
+    {
+      "name": "router_8",
+      "type": "QuantumRouter",
+      "seed": 437744403,
+      "memo_size": 50,
+      "template": "default_template",
+      "gate_fidelity": 0.99,
+      "measurement_fidelity": 0.99
+    },
+    {
+      "name": "router_9",
+      "type": "QuantumRouter",
+      "seed": 1194124532,
+      "memo_size": 50,
+      "template": "default_template",
+      "gate_fidelity": 0.99,
+      "measurement_fidelity": 0.99
+    },
+    {
+      "name": "router_10",
+      "type": "QuantumRouter",
+      "seed": 314380875,
+      "memo_size": 50,
+      "template": "default_template",
+      "gate_fidelity": 0.99,
+      "measurement_fidelity": 0.99
+    },
+    {
+      "name": "router_11",
+      "type": "QuantumRouter",
+      "seed": 1380756978,
+      "memo_size": 50,
+      "template": "default_template",
+      "gate_fidelity": 0.99,
+      "measurement_fidelity": 0.99
+    },
+    {
+      "name": "router_12",
+      "type": "QuantumRouter",
+      "seed": 1608490675,
+      "memo_size": 50,
+      "template": "default_template",
+      "gate_fidelity": 0.99,
+      "measurement_fidelity": 0.99
+    },
+    {
+      "name": "router_13",
+      "type": "QuantumRouter",
+      "seed": 1834656563,
+      "memo_size": 50,
+      "template": "default_template",
+      "gate_fidelity": 0.99,
+      "measurement_fidelity": 0.99
+    },
+    {
+      "name": "router_14",
+      "type": "QuantumRouter",
+      "seed": 1108233711,
+      "memo_size": 50,
+      "template": "default_template",
+      "gate_fidelity": 0.99,
+      "measurement_fidelity": 0.99
+    },
+    {
+      "name": "router_15",
+      "type": "QuantumRouter",
+      "seed": 71975326,
+      "memo_size": 50,
+      "template": "default_template",
+      "gate_fidelity": 0.99,
+      "measurement_fidelity": 0.99
+    },
+    {
+      "name": "router_16",
+      "type": "QuantumRouter",
+      "seed": 1916063229,
+      "memo_size": 50,
+      "template": "default_template",
+      "gate_fidelity": 0.99,
+      "measurement_fidelity": 0.99
+    },
+    {
+      "name": "router_17",
+      "type": "QuantumRouter",
+      "seed": 1612255078,
+      "memo_size": 50,
+      "template": "default_template",
+      "gate_fidelity": 0.99,
+      "measurement_fidelity": 0.99
+    },
+    {
+      "name": "router_18",
+      "type": "QuantumRouter",
+      "seed": 982297362,
+      "memo_size": 50,
+      "template": "default_template",
+      "gate_fidelity": 0.99,
+      "measurement_fidelity": 0.99
+    },
+    {
+      "name": "router_19",
+      "type": "QuantumRouter",
+      "seed": 802491541,
+      "memo_size": 50,
+      "template": "default_template",
+      "gate_fidelity": 0.99,
+      "measurement_fidelity": 0.99
+    },
+    {
+      "name": "router_20",
+      "type": "QuantumRouter",
+      "seed": 277207110,
+      "memo_size": 50,
+      "template": "default_template",
+      "gate_fidelity": 0.99,
+      "measurement_fidelity": 0.99
+    },
+    {
+      "name": "router_21",
+      "type": "QuantumRouter",
+      "seed": 535196208,
+      "memo_size": 50,
+      "template": "default_template",
+      "gate_fidelity": 0.99,
+      "measurement_fidelity": 0.99
+    },
+    {
+      "name": "router_22",
+      "type": "QuantumRouter",
+      "seed": 200306889,
+      "memo_size": 50,
+      "template": "default_template",
+      "gate_fidelity": 0.99,
+      "measurement_fidelity": 0.99
+    },
+    {
+      "name": "router_23",
+      "type": "QuantumRouter",
+      "seed": 239503628,
+      "memo_size": 50,
+      "template": "default_template",
+      "gate_fidelity": 0.99,
+      "measurement_fidelity": 0.99
+    },
+    {
+      "name": "router_24",
+      "type": "QuantumRouter",
+      "seed": 948754279,
+      "memo_size": 50,
+      "template": "default_template",
+      "gate_fidelity": 0.99,
+      "measurement_fidelity": 0.99
+    },
+    {
+      "name": "BSM_0_6",
+      "type": "BSMNode",
+      "seed": 1157004858,
+      "template": "default_template"
+    },
+    {
+      "name": "BSM_0_2",
+      "type": "BSMNode",
+      "seed": 686676494,
+      "template": "default_template"
+    },
+    {
+      "name": "BSM_0_3",
+      "type": "BSMNode",
+      "seed": 1516342450,
+      "template": "default_template"
+    },
+    {
+      "name": "BSM_1_4",
+      "type": "BSMNode",
+      "seed": 958237282,
+      "template": "default_template"
+    },
+    {
+      "name": "BSM_1_23",
+      "type": "BSMNode",
+      "seed": 2146850406,
+      "template": "default_template"
+    },
+    {
+      "name": "BSM_1_2",
+      "type": "BSMNode",
+      "seed": 1125342314,
+      "template": "default_template"
+    },
+    {
+      "name": "BSM_4_22",
+      "type": "BSMNode",
+      "seed": 666847651,
+      "template": "default_template"
+    },
+    {
+      "name": "BSM_4_16",
+      "type": "BSMNode",
+      "seed": 1622781177,
+      "template": "default_template"
+    },
+    {
+      "name": "BSM_5_23",
+      "type": "BSMNode",
+      "seed": 2109616804,
+      "template": "default_template"
+    },
+    {
+      "name": "BSM_5_11",
+      "type": "BSMNode",
+      "seed": 1880457667,
+      "template": "default_template"
+    },
+    {
+      "name": "BSM_6_23",
+      "type": "BSMNode",
+      "seed": 1131636929,
+      "template": "default_template"
+    },
+    {
+      "name": "BSM_6_15",
+      "type": "BSMNode",
+      "seed": 1600585714,
+      "template": "default_template"
+    },
+    {
+      "name": "BSM_7_21",
+      "type": "BSMNode",
+      "seed": 1921800780,
+      "template": "default_template"
+    },
+    {
+      "name": "BSM_8_11",
+      "type": "BSMNode",
+      "seed": 1664811365,
+      "template": "default_template"
+    },
+    {
+      "name": "BSM_9_19",
+      "type": "BSMNode",
+      "seed": 194334838,
+      "template": "default_template"
+    },
+    {
+      "name": "BSM_9_12",
+      "type": "BSMNode",
+      "seed": 1672558326,
+      "template": "default_template"
+    },
+    {
+      "name": "BSM_10_11",
+      "type": "BSMNode",
+      "seed": 121390735,
+      "template": "default_template"
+    },
+    {
+      "name": "BSM_12_23",
+      "type": "BSMNode",
+      "seed": 334801055,
+      "template": "default_template"
+    },
+    {
+      "name": "BSM_12_22",
+      "type": "BSMNode",
+      "seed": 942773971,
+      "template": "default_template"
+    },
+    {
+      "name": "BSM_13_19",
+      "type": "BSMNode",
+      "seed": 1827793211,
+      "template": "default_template"
+    },
+    {
+      "name": "BSM_14_15",
+      "type": "BSMNode",
+      "seed": 48254709,
+      "template": "default_template"
+    },
+    {
+      "name": "BSM_15_24",
+      "type": "BSMNode",
+      "seed": 541132340,
+      "template": "default_template"
+    },
+    {
+      "name": "BSM_15_18",
+      "type": "BSMNode",
+      "seed": 659540720,
+      "template": "default_template"
+    },
+    {
+      "name": "BSM_17_22",
+      "type": "BSMNode",
+      "seed": 1849399652,
+      "template": "default_template"
+    },
+    {
+      "name": "BSM_17_21",
+      "type": "BSMNode",
+      "seed": 64503583,
+      "template": "default_template"
+    },
+    {
+      "name": "BSM_19_22",
+      "type": "BSMNode",
+      "seed": 1268253167,
+      "template": "default_template"
+    },
+    {
+      "name": "BSM_19_20",
+      "type": "BSMNode",
+      "seed": 1757882784,
+      "template": "default_template"
+    }
+  ],
+  "qchannels": [
+    {
+      "source": "router_0",
+      "destination": "BSM_0_6",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_6",
+      "destination": "BSM_0_6",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_0",
+      "destination": "BSM_0_2",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_2",
+      "destination": "BSM_0_2",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_0",
+      "destination": "BSM_0_3",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_3",
+      "destination": "BSM_0_3",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_1",
+      "destination": "BSM_1_4",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_4",
+      "destination": "BSM_1_4",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_1",
+      "destination": "BSM_1_23",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_23",
+      "destination": "BSM_1_23",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_1",
+      "destination": "BSM_1_2",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_2",
+      "destination": "BSM_1_2",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_4",
+      "destination": "BSM_4_22",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_22",
+      "destination": "BSM_4_22",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_4",
+      "destination": "BSM_4_16",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_16",
+      "destination": "BSM_4_16",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_5",
+      "destination": "BSM_5_23",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_23",
+      "destination": "BSM_5_23",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_5",
+      "destination": "BSM_5_11",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_11",
+      "destination": "BSM_5_11",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_6",
+      "destination": "BSM_6_23",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_23",
+      "destination": "BSM_6_23",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_6",
+      "destination": "BSM_6_15",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_15",
+      "destination": "BSM_6_15",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_7",
+      "destination": "BSM_7_21",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_21",
+      "destination": "BSM_7_21",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_8",
+      "destination": "BSM_8_11",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_11",
+      "destination": "BSM_8_11",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_9",
+      "destination": "BSM_9_19",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_19",
+      "destination": "BSM_9_19",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_9",
+      "destination": "BSM_9_12",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_12",
+      "destination": "BSM_9_12",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_10",
+      "destination": "BSM_10_11",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_11",
+      "destination": "BSM_10_11",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_12",
+      "destination": "BSM_12_23",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_23",
+      "destination": "BSM_12_23",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_12",
+      "destination": "BSM_12_22",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_22",
+      "destination": "BSM_12_22",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_13",
+      "destination": "BSM_13_19",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_19",
+      "destination": "BSM_13_19",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_14",
+      "destination": "BSM_14_15",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_15",
+      "destination": "BSM_14_15",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_15",
+      "destination": "BSM_15_24",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_24",
+      "destination": "BSM_15_24",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_15",
+      "destination": "BSM_15_18",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_18",
+      "destination": "BSM_15_18",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_17",
+      "destination": "BSM_17_22",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_22",
+      "destination": "BSM_17_22",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_17",
+      "destination": "BSM_17_21",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_21",
+      "destination": "BSM_17_21",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_19",
+      "destination": "BSM_19_22",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_22",
+      "destination": "BSM_19_22",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_19",
+      "destination": "BSM_19_20",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    },
+    {
+      "source": "router_20",
+      "destination": "BSM_19_20",
+      "distance": 10000.0,
+      "attenuation": 0.0002
+    }
+  ],
+  "cchannels": [
+    {
+      "source": "router_0",
+      "destination": "BSM_0_6",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_0_6",
+      "destination": "router_0",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "BSM_0_6",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_0_6",
+      "destination": "router_6",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_0",
+      "destination": "BSM_0_2",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_0_2",
+      "destination": "router_0",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_2",
+      "destination": "BSM_0_2",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_0_2",
+      "destination": "router_2",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_0",
+      "destination": "BSM_0_3",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_0_3",
+      "destination": "router_0",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_3",
+      "destination": "BSM_0_3",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_0_3",
+      "destination": "router_3",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "BSM_1_4",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_1_4",
+      "destination": "router_1",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "BSM_1_4",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_1_4",
+      "destination": "router_4",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "BSM_1_23",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_1_23",
+      "destination": "router_1",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "BSM_1_23",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_1_23",
+      "destination": "router_23",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "BSM_1_2",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_1_2",
+      "destination": "router_1",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_2",
+      "destination": "BSM_1_2",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_1_2",
+      "destination": "router_2",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "BSM_4_22",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_4_22",
+      "destination": "router_4",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "BSM_4_22",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_4_22",
+      "destination": "router_22",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "BSM_4_16",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_4_16",
+      "destination": "router_4",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_16",
+      "destination": "BSM_4_16",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_4_16",
+      "destination": "router_16",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_5",
+      "destination": "BSM_5_23",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_5_23",
+      "destination": "router_5",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "BSM_5_23",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_5_23",
+      "destination": "router_23",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_5",
+      "destination": "BSM_5_11",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_5_11",
+      "destination": "router_5",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "BSM_5_11",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_5_11",
+      "destination": "router_11",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "BSM_6_23",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_6_23",
+      "destination": "router_6",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "BSM_6_23",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_6_23",
+      "destination": "router_23",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "BSM_6_15",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_6_15",
+      "destination": "router_6",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "BSM_6_15",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_6_15",
+      "destination": "router_15",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_7",
+      "destination": "BSM_7_21",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_7_21",
+      "destination": "router_7",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_21",
+      "destination": "BSM_7_21",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_7_21",
+      "destination": "router_21",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_8",
+      "destination": "BSM_8_11",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_8_11",
+      "destination": "router_8",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "BSM_8_11",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_8_11",
+      "destination": "router_11",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_9",
+      "destination": "BSM_9_19",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_9_19",
+      "destination": "router_9",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "BSM_9_19",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_9_19",
+      "destination": "router_19",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_9",
+      "destination": "BSM_9_12",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_9_12",
+      "destination": "router_9",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "BSM_9_12",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_9_12",
+      "destination": "router_12",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_10",
+      "destination": "BSM_10_11",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_10_11",
+      "destination": "router_10",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "BSM_10_11",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_10_11",
+      "destination": "router_11",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "BSM_12_23",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_12_23",
+      "destination": "router_12",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "BSM_12_23",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_12_23",
+      "destination": "router_23",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "BSM_12_22",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_12_22",
+      "destination": "router_12",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "BSM_12_22",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_12_22",
+      "destination": "router_22",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_13",
+      "destination": "BSM_13_19",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_13_19",
+      "destination": "router_13",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "BSM_13_19",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_13_19",
+      "destination": "router_19",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_14",
+      "destination": "BSM_14_15",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_14_15",
+      "destination": "router_14",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "BSM_14_15",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_14_15",
+      "destination": "router_15",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "BSM_15_24",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_15_24",
+      "destination": "router_15",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_24",
+      "destination": "BSM_15_24",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_15_24",
+      "destination": "router_24",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "BSM_15_18",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_15_18",
+      "destination": "router_15",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_18",
+      "destination": "BSM_15_18",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_15_18",
+      "destination": "router_18",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_17",
+      "destination": "BSM_17_22",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_17_22",
+      "destination": "router_17",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "BSM_17_22",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_17_22",
+      "destination": "router_22",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_17",
+      "destination": "BSM_17_21",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_17_21",
+      "destination": "router_17",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_21",
+      "destination": "BSM_17_21",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_17_21",
+      "destination": "router_21",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "BSM_19_22",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_19_22",
+      "destination": "router_19",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "BSM_19_22",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_19_22",
+      "destination": "router_22",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "BSM_19_20",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_19_20",
+      "destination": "router_19",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_20",
+      "destination": "BSM_19_20",
+      "delay": 50000000.0
+    },
+    {
+      "source": "BSM_19_20",
+      "destination": "router_20",
+      "delay": 50000000.0
+    },
+    {
+      "source": "router_0",
+      "destination": "router_1",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_0",
+      "destination": "router_2",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_0",
+      "destination": "router_3",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_0",
+      "destination": "router_4",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_0",
+      "destination": "router_5",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_0",
+      "destination": "router_6",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_0",
+      "destination": "router_7",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_0",
+      "destination": "router_8",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_0",
+      "destination": "router_9",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_0",
+      "destination": "router_10",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_0",
+      "destination": "router_11",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_0",
+      "destination": "router_12",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_0",
+      "destination": "router_13",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_0",
+      "destination": "router_14",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_0",
+      "destination": "router_15",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_0",
+      "destination": "router_16",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_0",
+      "destination": "router_17",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_0",
+      "destination": "router_18",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_0",
+      "destination": "router_19",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_0",
+      "destination": "router_20",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_0",
+      "destination": "router_21",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_0",
+      "destination": "router_22",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_0",
+      "destination": "router_23",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_0",
+      "destination": "router_24",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "router_0",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "router_2",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "router_3",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "router_4",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "router_5",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "router_6",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "router_7",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "router_8",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "router_9",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "router_10",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "router_11",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "router_12",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "router_13",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "router_14",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "router_15",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "router_16",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "router_17",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "router_18",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "router_19",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "router_20",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "router_21",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "router_22",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "router_23",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_1",
+      "destination": "router_24",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_2",
+      "destination": "router_0",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_2",
+      "destination": "router_1",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_2",
+      "destination": "router_3",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_2",
+      "destination": "router_4",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_2",
+      "destination": "router_5",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_2",
+      "destination": "router_6",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_2",
+      "destination": "router_7",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_2",
+      "destination": "router_8",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_2",
+      "destination": "router_9",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_2",
+      "destination": "router_10",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_2",
+      "destination": "router_11",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_2",
+      "destination": "router_12",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_2",
+      "destination": "router_13",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_2",
+      "destination": "router_14",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_2",
+      "destination": "router_15",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_2",
+      "destination": "router_16",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_2",
+      "destination": "router_17",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_2",
+      "destination": "router_18",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_2",
+      "destination": "router_19",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_2",
+      "destination": "router_20",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_2",
+      "destination": "router_21",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_2",
+      "destination": "router_22",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_2",
+      "destination": "router_23",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_2",
+      "destination": "router_24",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_3",
+      "destination": "router_0",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_3",
+      "destination": "router_1",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_3",
+      "destination": "router_2",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_3",
+      "destination": "router_4",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_3",
+      "destination": "router_5",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_3",
+      "destination": "router_6",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_3",
+      "destination": "router_7",
+      "delay": 800000000.0
+    },
+    {
+      "source": "router_3",
+      "destination": "router_8",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_3",
+      "destination": "router_9",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_3",
+      "destination": "router_10",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_3",
+      "destination": "router_11",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_3",
+      "destination": "router_12",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_3",
+      "destination": "router_13",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_3",
+      "destination": "router_14",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_3",
+      "destination": "router_15",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_3",
+      "destination": "router_16",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_3",
+      "destination": "router_17",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_3",
+      "destination": "router_18",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_3",
+      "destination": "router_19",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_3",
+      "destination": "router_20",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_3",
+      "destination": "router_21",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_3",
+      "destination": "router_22",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_3",
+      "destination": "router_23",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_3",
+      "destination": "router_24",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "router_0",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "router_1",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "router_2",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "router_3",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "router_5",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "router_6",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "router_7",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "router_8",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "router_9",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "router_10",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "router_11",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "router_12",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "router_13",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "router_14",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "router_15",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "router_16",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "router_17",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "router_18",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "router_19",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "router_20",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "router_21",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "router_22",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "router_23",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_4",
+      "destination": "router_24",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_5",
+      "destination": "router_0",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_5",
+      "destination": "router_1",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_5",
+      "destination": "router_2",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_5",
+      "destination": "router_3",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_5",
+      "destination": "router_4",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_5",
+      "destination": "router_6",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_5",
+      "destination": "router_7",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_5",
+      "destination": "router_8",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_5",
+      "destination": "router_9",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_5",
+      "destination": "router_10",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_5",
+      "destination": "router_11",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_5",
+      "destination": "router_12",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_5",
+      "destination": "router_13",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_5",
+      "destination": "router_14",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_5",
+      "destination": "router_15",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_5",
+      "destination": "router_16",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_5",
+      "destination": "router_17",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_5",
+      "destination": "router_18",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_5",
+      "destination": "router_19",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_5",
+      "destination": "router_20",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_5",
+      "destination": "router_21",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_5",
+      "destination": "router_22",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_5",
+      "destination": "router_23",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_5",
+      "destination": "router_24",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "router_0",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "router_1",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "router_2",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "router_3",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "router_4",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "router_5",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "router_7",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "router_8",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "router_9",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "router_10",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "router_11",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "router_12",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "router_13",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "router_14",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "router_15",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "router_16",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "router_17",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "router_18",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "router_19",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "router_20",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "router_21",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "router_22",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "router_23",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_6",
+      "destination": "router_24",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_7",
+      "destination": "router_0",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_7",
+      "destination": "router_1",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_7",
+      "destination": "router_2",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_7",
+      "destination": "router_3",
+      "delay": 800000000.0
+    },
+    {
+      "source": "router_7",
+      "destination": "router_4",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_7",
+      "destination": "router_5",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_7",
+      "destination": "router_6",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_7",
+      "destination": "router_8",
+      "delay": 800000000.0
+    },
+    {
+      "source": "router_7",
+      "destination": "router_9",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_7",
+      "destination": "router_10",
+      "delay": 800000000.0
+    },
+    {
+      "source": "router_7",
+      "destination": "router_11",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_7",
+      "destination": "router_12",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_7",
+      "destination": "router_13",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_7",
+      "destination": "router_14",
+      "delay": 800000000.0
+    },
+    {
+      "source": "router_7",
+      "destination": "router_15",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_7",
+      "destination": "router_16",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_7",
+      "destination": "router_17",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_7",
+      "destination": "router_18",
+      "delay": 800000000.0
+    },
+    {
+      "source": "router_7",
+      "destination": "router_19",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_7",
+      "destination": "router_20",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_7",
+      "destination": "router_21",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_7",
+      "destination": "router_22",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_7",
+      "destination": "router_23",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_7",
+      "destination": "router_24",
+      "delay": 800000000.0
+    },
+    {
+      "source": "router_8",
+      "destination": "router_0",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_8",
+      "destination": "router_1",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_8",
+      "destination": "router_2",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_8",
+      "destination": "router_3",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_8",
+      "destination": "router_4",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_8",
+      "destination": "router_5",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_8",
+      "destination": "router_6",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_8",
+      "destination": "router_7",
+      "delay": 800000000.0
+    },
+    {
+      "source": "router_8",
+      "destination": "router_9",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_8",
+      "destination": "router_10",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_8",
+      "destination": "router_11",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_8",
+      "destination": "router_12",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_8",
+      "destination": "router_13",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_8",
+      "destination": "router_14",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_8",
+      "destination": "router_15",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_8",
+      "destination": "router_16",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_8",
+      "destination": "router_17",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_8",
+      "destination": "router_18",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_8",
+      "destination": "router_19",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_8",
+      "destination": "router_20",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_8",
+      "destination": "router_21",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_8",
+      "destination": "router_22",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_8",
+      "destination": "router_23",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_8",
+      "destination": "router_24",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_9",
+      "destination": "router_0",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_9",
+      "destination": "router_1",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_9",
+      "destination": "router_2",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_9",
+      "destination": "router_3",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_9",
+      "destination": "router_4",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_9",
+      "destination": "router_5",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_9",
+      "destination": "router_6",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_9",
+      "destination": "router_7",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_9",
+      "destination": "router_8",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_9",
+      "destination": "router_10",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_9",
+      "destination": "router_11",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_9",
+      "destination": "router_12",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_9",
+      "destination": "router_13",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_9",
+      "destination": "router_14",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_9",
+      "destination": "router_15",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_9",
+      "destination": "router_16",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_9",
+      "destination": "router_17",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_9",
+      "destination": "router_18",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_9",
+      "destination": "router_19",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_9",
+      "destination": "router_20",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_9",
+      "destination": "router_21",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_9",
+      "destination": "router_22",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_9",
+      "destination": "router_23",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_9",
+      "destination": "router_24",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_10",
+      "destination": "router_0",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_10",
+      "destination": "router_1",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_10",
+      "destination": "router_2",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_10",
+      "destination": "router_3",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_10",
+      "destination": "router_4",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_10",
+      "destination": "router_5",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_10",
+      "destination": "router_6",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_10",
+      "destination": "router_7",
+      "delay": 800000000.0
+    },
+    {
+      "source": "router_10",
+      "destination": "router_8",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_10",
+      "destination": "router_9",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_10",
+      "destination": "router_11",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_10",
+      "destination": "router_12",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_10",
+      "destination": "router_13",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_10",
+      "destination": "router_14",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_10",
+      "destination": "router_15",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_10",
+      "destination": "router_16",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_10",
+      "destination": "router_17",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_10",
+      "destination": "router_18",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_10",
+      "destination": "router_19",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_10",
+      "destination": "router_20",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_10",
+      "destination": "router_21",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_10",
+      "destination": "router_22",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_10",
+      "destination": "router_23",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_10",
+      "destination": "router_24",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "router_0",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "router_1",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "router_2",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "router_3",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "router_4",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "router_5",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "router_6",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "router_7",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "router_8",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "router_9",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "router_10",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "router_12",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "router_13",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "router_14",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "router_15",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "router_16",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "router_17",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "router_18",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "router_19",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "router_20",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "router_21",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "router_22",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "router_23",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_11",
+      "destination": "router_24",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "router_0",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "router_1",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "router_2",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "router_3",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "router_4",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "router_5",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "router_6",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "router_7",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "router_8",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "router_9",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "router_10",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "router_11",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "router_13",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "router_14",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "router_15",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "router_16",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "router_17",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "router_18",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "router_19",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "router_20",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "router_21",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "router_22",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "router_23",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_12",
+      "destination": "router_24",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_13",
+      "destination": "router_0",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_13",
+      "destination": "router_1",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_13",
+      "destination": "router_2",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_13",
+      "destination": "router_3",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_13",
+      "destination": "router_4",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_13",
+      "destination": "router_5",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_13",
+      "destination": "router_6",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_13",
+      "destination": "router_7",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_13",
+      "destination": "router_8",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_13",
+      "destination": "router_9",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_13",
+      "destination": "router_10",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_13",
+      "destination": "router_11",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_13",
+      "destination": "router_12",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_13",
+      "destination": "router_14",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_13",
+      "destination": "router_15",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_13",
+      "destination": "router_16",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_13",
+      "destination": "router_17",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_13",
+      "destination": "router_18",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_13",
+      "destination": "router_19",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_13",
+      "destination": "router_20",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_13",
+      "destination": "router_21",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_13",
+      "destination": "router_22",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_13",
+      "destination": "router_23",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_13",
+      "destination": "router_24",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_14",
+      "destination": "router_0",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_14",
+      "destination": "router_1",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_14",
+      "destination": "router_2",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_14",
+      "destination": "router_3",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_14",
+      "destination": "router_4",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_14",
+      "destination": "router_5",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_14",
+      "destination": "router_6",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_14",
+      "destination": "router_7",
+      "delay": 800000000.0
+    },
+    {
+      "source": "router_14",
+      "destination": "router_8",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_14",
+      "destination": "router_9",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_14",
+      "destination": "router_10",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_14",
+      "destination": "router_11",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_14",
+      "destination": "router_12",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_14",
+      "destination": "router_13",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_14",
+      "destination": "router_15",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_14",
+      "destination": "router_16",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_14",
+      "destination": "router_17",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_14",
+      "destination": "router_18",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_14",
+      "destination": "router_19",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_14",
+      "destination": "router_20",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_14",
+      "destination": "router_21",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_14",
+      "destination": "router_22",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_14",
+      "destination": "router_23",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_14",
+      "destination": "router_24",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "router_0",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "router_1",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "router_2",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "router_3",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "router_4",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "router_5",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "router_6",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "router_7",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "router_8",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "router_9",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "router_10",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "router_11",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "router_12",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "router_13",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "router_14",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "router_16",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "router_17",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "router_18",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "router_19",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "router_20",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "router_21",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "router_22",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "router_23",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_15",
+      "destination": "router_24",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_16",
+      "destination": "router_0",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_16",
+      "destination": "router_1",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_16",
+      "destination": "router_2",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_16",
+      "destination": "router_3",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_16",
+      "destination": "router_4",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_16",
+      "destination": "router_5",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_16",
+      "destination": "router_6",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_16",
+      "destination": "router_7",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_16",
+      "destination": "router_8",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_16",
+      "destination": "router_9",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_16",
+      "destination": "router_10",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_16",
+      "destination": "router_11",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_16",
+      "destination": "router_12",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_16",
+      "destination": "router_13",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_16",
+      "destination": "router_14",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_16",
+      "destination": "router_15",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_16",
+      "destination": "router_17",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_16",
+      "destination": "router_18",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_16",
+      "destination": "router_19",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_16",
+      "destination": "router_20",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_16",
+      "destination": "router_21",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_16",
+      "destination": "router_22",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_16",
+      "destination": "router_23",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_16",
+      "destination": "router_24",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_17",
+      "destination": "router_0",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_17",
+      "destination": "router_1",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_17",
+      "destination": "router_2",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_17",
+      "destination": "router_3",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_17",
+      "destination": "router_4",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_17",
+      "destination": "router_5",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_17",
+      "destination": "router_6",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_17",
+      "destination": "router_7",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_17",
+      "destination": "router_8",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_17",
+      "destination": "router_9",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_17",
+      "destination": "router_10",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_17",
+      "destination": "router_11",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_17",
+      "destination": "router_12",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_17",
+      "destination": "router_13",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_17",
+      "destination": "router_14",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_17",
+      "destination": "router_15",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_17",
+      "destination": "router_16",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_17",
+      "destination": "router_18",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_17",
+      "destination": "router_19",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_17",
+      "destination": "router_20",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_17",
+      "destination": "router_21",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_17",
+      "destination": "router_22",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_17",
+      "destination": "router_23",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_17",
+      "destination": "router_24",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_18",
+      "destination": "router_0",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_18",
+      "destination": "router_1",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_18",
+      "destination": "router_2",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_18",
+      "destination": "router_3",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_18",
+      "destination": "router_4",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_18",
+      "destination": "router_5",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_18",
+      "destination": "router_6",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_18",
+      "destination": "router_7",
+      "delay": 800000000.0
+    },
+    {
+      "source": "router_18",
+      "destination": "router_8",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_18",
+      "destination": "router_9",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_18",
+      "destination": "router_10",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_18",
+      "destination": "router_11",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_18",
+      "destination": "router_12",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_18",
+      "destination": "router_13",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_18",
+      "destination": "router_14",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_18",
+      "destination": "router_15",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_18",
+      "destination": "router_16",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_18",
+      "destination": "router_17",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_18",
+      "destination": "router_19",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_18",
+      "destination": "router_20",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_18",
+      "destination": "router_21",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_18",
+      "destination": "router_22",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_18",
+      "destination": "router_23",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_18",
+      "destination": "router_24",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "router_0",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "router_1",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "router_2",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "router_3",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "router_4",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "router_5",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "router_6",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "router_7",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "router_8",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "router_9",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "router_10",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "router_11",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "router_12",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "router_13",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "router_14",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "router_15",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "router_16",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "router_17",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "router_18",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "router_20",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "router_21",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "router_22",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "router_23",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_19",
+      "destination": "router_24",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_20",
+      "destination": "router_0",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_20",
+      "destination": "router_1",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_20",
+      "destination": "router_2",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_20",
+      "destination": "router_3",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_20",
+      "destination": "router_4",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_20",
+      "destination": "router_5",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_20",
+      "destination": "router_6",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_20",
+      "destination": "router_7",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_20",
+      "destination": "router_8",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_20",
+      "destination": "router_9",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_20",
+      "destination": "router_10",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_20",
+      "destination": "router_11",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_20",
+      "destination": "router_12",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_20",
+      "destination": "router_13",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_20",
+      "destination": "router_14",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_20",
+      "destination": "router_15",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_20",
+      "destination": "router_16",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_20",
+      "destination": "router_17",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_20",
+      "destination": "router_18",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_20",
+      "destination": "router_19",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_20",
+      "destination": "router_21",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_20",
+      "destination": "router_22",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_20",
+      "destination": "router_23",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_20",
+      "destination": "router_24",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_21",
+      "destination": "router_0",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_21",
+      "destination": "router_1",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_21",
+      "destination": "router_2",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_21",
+      "destination": "router_3",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_21",
+      "destination": "router_4",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_21",
+      "destination": "router_5",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_21",
+      "destination": "router_6",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_21",
+      "destination": "router_7",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_21",
+      "destination": "router_8",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_21",
+      "destination": "router_9",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_21",
+      "destination": "router_10",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_21",
+      "destination": "router_11",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_21",
+      "destination": "router_12",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_21",
+      "destination": "router_13",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_21",
+      "destination": "router_14",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_21",
+      "destination": "router_15",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_21",
+      "destination": "router_16",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_21",
+      "destination": "router_17",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_21",
+      "destination": "router_18",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_21",
+      "destination": "router_19",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_21",
+      "destination": "router_20",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_21",
+      "destination": "router_22",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_21",
+      "destination": "router_23",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_21",
+      "destination": "router_24",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "router_0",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "router_1",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "router_2",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "router_3",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "router_4",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "router_5",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "router_6",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "router_7",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "router_8",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "router_9",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "router_10",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "router_11",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "router_12",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "router_13",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "router_14",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "router_15",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "router_16",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "router_17",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "router_18",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "router_19",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "router_20",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "router_21",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "router_23",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_22",
+      "destination": "router_24",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "router_0",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "router_1",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "router_2",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "router_3",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "router_4",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "router_5",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "router_6",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "router_7",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "router_8",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "router_9",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "router_10",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "router_11",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "router_12",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "router_13",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "router_14",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "router_15",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "router_16",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "router_17",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "router_18",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "router_19",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "router_20",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "router_21",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "router_22",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_23",
+      "destination": "router_24",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_24",
+      "destination": "router_0",
+      "delay": 300000000.0
+    },
+    {
+      "source": "router_24",
+      "destination": "router_1",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_24",
+      "destination": "router_2",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_24",
+      "destination": "router_3",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_24",
+      "destination": "router_4",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_24",
+      "destination": "router_5",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_24",
+      "destination": "router_6",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_24",
+      "destination": "router_7",
+      "delay": 800000000.0
+    },
+    {
+      "source": "router_24",
+      "destination": "router_8",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_24",
+      "destination": "router_9",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_24",
+      "destination": "router_10",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_24",
+      "destination": "router_11",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_24",
+      "destination": "router_12",
+      "delay": 400000000.0
+    },
+    {
+      "source": "router_24",
+      "destination": "router_13",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_24",
+      "destination": "router_14",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_24",
+      "destination": "router_15",
+      "delay": 100000000.0
+    },
+    {
+      "source": "router_24",
+      "destination": "router_16",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_24",
+      "destination": "router_17",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_24",
+      "destination": "router_18",
+      "delay": 200000000.0
+    },
+    {
+      "source": "router_24",
+      "destination": "router_19",
+      "delay": 600000000.0
+    },
+    {
+      "source": "router_24",
+      "destination": "router_20",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_24",
+      "destination": "router_21",
+      "delay": 700000000.0
+    },
+    {
+      "source": "router_24",
+      "destination": "router_22",
+      "delay": 500000000.0
+    },
+    {
+      "source": "router_24",
+      "destination": "router_23",
+      "delay": 300000000.0
+    }
+  ],
+  "stop_time": 180000000000000.0,
+  "is_parallel": false
+}
