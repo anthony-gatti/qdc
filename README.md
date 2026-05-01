@@ -25,7 +25,7 @@ The framework measures **network-level cost only**: time-to-serve, fidelity, suc
 
 Framework and infrastructure:
 
-- **Topology generator**: hub-spoke and linear topologies with parametric depth, link distance, and density.
+- **Topology generator**: central-hop and linear topologies with parametric depth, link distance, and density.
 - **QPQ application**: SeQUeNCe `Application` subclass implementing the 2-round protocol structure with per-round deadlines and pair-arrival timestamping.
 - **Workload generator**: produces QPQ query specs with configurable client count, queries per client, inter-query timing, and database size.
 - **Backend abstraction**: each routing algorithm implements `BackendBase` and plugs into the same experiment runner.
