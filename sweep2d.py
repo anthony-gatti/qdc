@@ -29,7 +29,7 @@ from topology import (
     generate_hub_spoke_topology, save_topology, validate_topology
 )
 from workload import generate_qpq_queries
-from backends.acp_backend import ACPBackend
+from backends.registry import get_backend
 from common import SECOND, MILLISECOND
 
 
@@ -136,13 +136,7 @@ def run_one_cell(
     )
 
     # Backend
-    if backend_name == "odo":
-        backend = ACPBackend(adaptive_max_memory=0)
-    elif backend_name == "acp":
-        backend = ACPBackend(adaptive_max_memory=hw.get("acp_memory", 8),
-                             update_prob=True)
-    else:
-        raise ValueError(f"Unknown backend: {backend_name}")
+    backend = get_backend(backend_name, config)
 
     # Topology JSON
     backend_topo = copy.deepcopy(topo_config)
@@ -302,6 +296,12 @@ def main():
     parser = argparse.ArgumentParser(description="QPQ 2D sweep")
     parser.add_argument("--config", type=str, default="config/default.yaml")
     parser.add_argument("--output", type=str, default="sweep2d_output")
+    parser.add_argument(
+        "--backends",
+        type=str,
+        default="odo",
+        help="Comma-separated backend list, e.g. 'odo' or 'odo,acp'",
+    )
     parser.add_argument("--pilot", action="store_true",
                         help="Fast pilot: 3 seeds, 2 distances")
     parser.add_argument("--skip-primary", action="store_true")
@@ -316,6 +316,8 @@ def main():
         base_config = yaml.safe_load(f)
 
     base_config.setdefault("workload", {})["mode"] = "qpq"
+
+    backends = [b.strip() for b in args.backends.split(",") if b.strip()]
 
     if args.pilot:
         distances_km = [10.0, 40.0]
@@ -347,7 +349,7 @@ def main():
             num_nodes=args.num_nodes,
             database_size_log=base_config.get("workload", {}).get(
                 "database_size_log", 10),
-            backends=["odo", "acp"],
+            backends=backends,
             output_dir=args.output,
         )
 
