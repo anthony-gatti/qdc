@@ -18,15 +18,8 @@ from sequence.resource_management.memory_manager import MemoryInfo
 from sequence.constants import SECOND
 import sequence.utils.log as log
 
-# ACP imports for path caching
-ACP_DIR = os.path.join(os.path.dirname(__file__), '..', 'acp')
-if ACP_DIR not in sys.path:
-    sys.path.insert(0, os.path.abspath(ACP_DIR))
-
-from reservation import ReservationAdaptive
-
 if TYPE_CHECKING:
-    from node import QuantumRouterAdaptive
+    from sequence.topology.node import Node
     from sequence.network_management.reservation import Reservation
 
 
@@ -102,7 +95,7 @@ class QPQApp(RequestApp):
                          round_deadline_ps=5*SECOND)
     """
 
-    def __init__(self, node: "QuantumRouterAdaptive"):
+    def __init__(self, node):
         super().__init__(node)
 
         # Query tracking (initiator side)
@@ -346,19 +339,29 @@ class QPQApp(RequestApp):
                     f"{self.node.name} QPQ query {query_id} FAILED: round 2 deadline missed"
                 )
 
-    # ---------- ACP integration ----------
+    # ---------- Optional ACP integration ----------
+
+    def _has_acp(self) -> bool:
+        """Return True if this node came from the ACP adaptive topology."""
+        return hasattr(self.node, "adaptive_continuous")
 
     def _cache_entangled_path(self, reservation) -> None:
-        """Feed entangled path to ACP probability table."""
-        if hasattr(reservation, 'path') and reservation.path:
-            timestamp = self.node.timeline.now()
-            cache = self.node.adaptive_continuous.cache
-            cache.append((timestamp, reservation.path))
+        """Feed entangled path to ACP probability table, if ACP is present."""
+        if not self._has_acp():
+            return
+        if not hasattr(reservation, "path") or not reservation.path:
+            return
+
+        timestamp = self.node.timeline.now()
+        self.node.adaptive_continuous.cache.append((timestamp, reservation.path))
 
     def _send_entangled_path(self, reservation) -> None:
-        """Send entangled path to intermediate nodes for ACP cache."""
-        if not hasattr(reservation, 'path') or not reservation.path:
+        """Send entangled path to intermediate nodes for ACP cache, if ACP is present."""
+        if not self._has_acp():
             return
+        if not hasattr(reservation, "path") or not reservation.path:
+            return
+
         path = reservation.path
         if len(path) > 2:
             for i in range(1, len(path) - 1):
@@ -369,9 +372,12 @@ class QPQApp(RequestApp):
                 )
 
     def _send_expire_rules_message(self, reservation) -> None:
-        """Send expire rules to intermediate nodes."""
-        if not hasattr(reservation, 'path') or not reservation.path:
+        """Send expire-rule messages to intermediate nodes, if ACP is present."""
+        if not self._has_acp():
             return
+        if not hasattr(reservation, "path") or not reservation.path:
+            return
+
         path = reservation.path
         if len(path) > 2:
             for i in range(1, len(path) - 1):
