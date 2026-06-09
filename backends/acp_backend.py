@@ -13,20 +13,29 @@ import os
 from collections import defaultdict
 from typing import Optional
 
-# Add acp/ to path so we can import its modules
-# Adjust this path based on your directory structure
-ACP_DIR = os.path.join(os.path.dirname(__file__), '..', '..', 'acp')
-if ACP_DIR not in sys.path:
-    sys.path.insert(0, os.path.abspath(ACP_DIR))
+ACP_DIR = os.environ.get(
+    "QDC_ACP_DIR",
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "acp")),
+)
+
+if os.path.isdir(ACP_DIR) and ACP_DIR not in sys.path:
+    sys.path.insert(0, ACP_DIR)
 
 from sequence.topology.router_net_topo import RouterNetTopo
 from sequence.constants import MILLISECOND
 
 # ACP imports — these come from the acp/ fork
-from router_net_topo_adaptive import RouterNetTopoAdaptive
-from request_app import RequestAppTimeToServe
+try:
+    from router_net_topo_adaptive import RouterNetTopoAdaptive
+    from request_app import RequestAppTimeToServe
+except ImportError as e:
+    raise ImportError(
+        "Could not import ACP modules. Set QDC_ACP_DIR to the patched ACP repo, "
+        "or install ACP so router_net_topo_adaptive.py is importable."
+    ) from e
 
 from backends.base import BackendBase
+from backends.collectors import collect_qpq_results
 from results import BackendResult, RequestResult
 from qpq_app import QPQApp, QPQResult
 
@@ -38,16 +47,20 @@ class ACPBackend(BackendBase):
     With adaptive_max_memory>0, this is ACP with continuous pre-generation.
     """
 
-    def __init__(self, adaptive_max_memory: int = 0, update_prob: bool = True):
+    def __init__(self, adaptive_max_memory: int = 8, update_prob: bool = True):
         """
         Args:
             adaptive_max_memory: memories per node for ACP background generation.
-                0 = ODO baseline (no pre-generation).
             update_prob: whether ACP updates neighbor selection probabilities.
                 Only relevant when adaptive_max_memory > 0.
         """
+        if adaptive_max_memory <= 0:
+            raise ValueError(
+                "ACPBackend requires adaptive_max_memory > 0. "
+                "Use ODOBackend for the on-demand baseline."
+            )
         self._adaptive_max_memory = adaptive_max_memory
-        self._update_prob = update_prob and (adaptive_max_memory > 0)
+        self._update_prob = update_prob
 
     @property
     def adaptive_max_memory(self) -> int:
@@ -55,8 +68,6 @@ class ACPBackend(BackendBase):
 
     @property
     def name(self) -> str:
-        if self._adaptive_max_memory == 0:
-            return "odo"
         return f"acp_m{self._adaptive_max_memory}"
 
     def run(
@@ -156,8 +167,8 @@ class ACPBackend(BackendBase):
         tl.init()
         tl.run()
 
-        return self._collect_qpq_results(name_to_app, config)
-
+        return collect_qpq_results(name_to_app, config, self.name)
+    
     def _collect_pair_results(
         self,
         name_to_app: dict,
