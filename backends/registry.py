@@ -1,11 +1,8 @@
 def get_backend(name: str, config: dict):
-    """Construct a backend by name.
-
-    ACP is imported lazily so the core framework can run without ACP installed.
-    """
     name = name.lower()
+    hw = config.get("hardware", {})
 
-    if name == "odo":
+    if name in ("odo", "sequence_bd", "odo_vanilla"):
         from backends.odo_backend import ODOBackend
         return ODOBackend()
 
@@ -15,10 +12,9 @@ def get_backend(name: str, config: dict):
         except ImportError as e:
             raise RuntimeError(
                 "ACP backend requested, but ACP could not be imported. "
-                "Install or patch ACP, then set QDC_ACP_DIR to its directory."
+                "Set QDC_ACP_DIR to the patched ACP repo."
             ) from e
 
-        hw = config.get("hardware", {})
         return ACPBackend(
             adaptive_max_memory=hw.get("acp_memory", 8),
             update_prob=True,

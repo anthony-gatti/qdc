@@ -36,6 +36,8 @@ def generate_hub_spoke_topology(
     seed: int = 42,
     extra_mesh_edges: int = 0,
     qdc_node_index: Optional[int] = None,
+    encoding_type: str = "single_heralded",
+    formalism: str = "bell_diagonal",
 ) -> dict:
     """Generate a hub-and-spoke topology with optional extra mesh edges.
 
@@ -88,7 +90,7 @@ def generate_hub_spoke_topology(
             "coherence_time": coherence_time_s,
         },
         "adaptive_max_memory": adaptive_max_memory,
-        "encoding_type": "single_heralded",
+        "encoding_type": encoding_type,
         "decoherence_errors": [1/3, 1/3, 1/3],
     }
 
@@ -175,6 +177,8 @@ def generate_hub_spoke_topology(
     all_nodes = nodes + bsm_nodes
 
     config = {
+        "formalism": formalism,
+        "encoding_type": encoding_type,
         "templates": {
             "default_template": template,
         },
@@ -378,6 +382,8 @@ if __name__ == "__main__":
     parser.add_argument("--linear", action="store_true", help="Linear chain instead of hub-spoke")
     parser.add_argument("--distance", type=float, default=1000.0, help="Inter-node distance (meters)")
     parser.add_argument("--memo-size", type=int, default=10)
+    parser.add_argument("--encoding-type", type=str, default="single_heralded")
+    parser.add_argument("--formalism", type=str, default="bell_diagonal")
     parser.add_argument("--acp-memory", type=int, default=0, help="ACP memory budget (0=ODO)")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output", type=str, default="topology.json")
@@ -389,6 +395,8 @@ if __name__ == "__main__":
         num_nodes=args.nodes,
         inter_node_distance_m=args.distance,
         memo_size=args.memo_size,
+        encoding_type=args.encoding_type,
+        formalism=args.formalism,
         adaptive_max_memory=args.acp_memory,
         seed=args.seed,
     )

@@ -13,16 +13,13 @@ Usage:
 """
 
 import os
-import sys
 import csv
 import copy
 import argparse
 import time as walltime
 from collections import defaultdict
-from dataclasses import asdict
-from typing import List, Dict, Tuple
+from typing import List, Dict
 
-import numpy as np
 import networkx as nx
 
 from topology import (
@@ -30,7 +27,6 @@ from topology import (
 )
 from workload import generate_qpq_queries
 from backends.registry import get_backend
-from common import SECOND, MILLISECOND
 
 
 # ---------------------------------------------------------------------------
@@ -89,12 +85,27 @@ def run_one_cell(
 
     qdc_name = f"router_{topo_cfg['qdc_node_index']}"
 
+    # Backend
+    backend = get_backend(backend_name, config)
+
+    # Backend-specific physical/topology mode.
+    # For the current upstream SeQUeNCe ODO spike, use Bell diagonal + single heralded.
+    if backend_name in ("odo", "sequence_bd", "odo_vanilla"):
+        formalism = hw.get("formalism", "bell_diagonal")
+        encoding_type = hw.get("encoding_type", "single_heralded")
+    elif backend_name == "acp":
+        formalism = hw.get("acp_formalism", "bell_diagonal")
+        encoding_type = hw.get("acp_encoding_type", "single_heralded")
+    else:
+        formalism = hw.get("formalism", "bell_diagonal")
+        encoding_type = hw.get("encoding_type", "single_heralded")
+
     # Build topology
     topo_config = generate_hub_spoke_topology(
         num_nodes=num_nodes,
         inter_node_distance_m=distance_km * 1000.0,
         memo_size=hw.get("memories_per_node", 50),
-        adaptive_max_memory=hw.get("acp_memory", 8),
+        adaptive_max_memory=backend.adaptive_max_memory,
         memory_fidelity=hw.get("link_fidelity", 0.99),
         memory_efficiency=hw.get("memory_efficiency", 0.5),
         coherence_time_s=hw.get("memory_coherence_time_s", 5.0),
@@ -104,6 +115,8 @@ def run_one_cell(
         seed=seed,
         extra_mesh_edges=topo_cfg.get("extra_mesh_edges", 3),
         qdc_node_index=topo_cfg["qdc_node_index"],
+        encoding_type=encoding_type,
+        formalism=formalism,
     )
 
     issues = validate_topology(topo_config)
@@ -134,9 +147,6 @@ def run_one_cell(
         reservation_duration_s=wl.get("reservation_duration_s", 5.0),
         seed=seed,
     )
-
-    # Backend
-    backend = get_backend(backend_name, config)
 
     # Topology JSON
     backend_topo = copy.deepcopy(topo_config)
@@ -363,7 +373,7 @@ def main():
             seeds=seeds,
             distance_km=20.0,
             num_nodes=args.num_nodes,
-            backends=["odo", "acp"],
+            backends=backends,
             output_dir=args.output,
         )
 
