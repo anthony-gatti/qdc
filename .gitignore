@@ -1,3 +1,6 @@
 sweep2d_final/
-
+__pycache__/
 external/
+backends/__pycache__/
+*.log
+test_odo_validate/
