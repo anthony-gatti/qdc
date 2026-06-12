@@ -20,6 +20,7 @@ from sequence.entanglement_management.generation import (
 from sequence.entanglement_management.purification.bbpssw_protocol import BBPSSWProtocol
 
 from backends.base import BackendBase
+from backends.collectors import collect_qpq_results
 from results import BackendResult, RequestResult
 from qpq_app import QPQApp
 
@@ -85,46 +86,7 @@ class ODOBackend(BackendBase):
         tl.init()
         tl.run()
 
-        return self._collect_qpq_results(name_to_app, config)
-
-    def _collect_qpq_results(self, name_to_app: dict, config: dict) -> BackendResult:
-        request_results = []
-
         for app in name_to_app.values():
-            for qpq_result in app.get_results():
-                if qpq_result.success:
-                    fidelity = 0.0
-                    fids = []
-                    if qpq_result.round1_avg_fidelity:
-                        fids.append(qpq_result.round1_avg_fidelity)
-                    if qpq_result.round2_avg_fidelity:
-                        fids.append(qpq_result.round2_avg_fidelity)
-                    if fids:
-                        fidelity = sum(fids) / len(fids)
+            app.finalize_unfinished_queries(tl.now())
 
-                    tts = qpq_result.total_time_ms
-                else:
-                    fidelity = None
-                    tts = None
-
-                request_results.append(RequestResult(
-                    request_id=qpq_result.query_id,
-                    src=qpq_result.src,
-                    dst=qpq_result.dst,
-                    start_time_ps=0,
-                    time_to_serve_ms=tts,
-                    fidelity=fidelity,
-                    success=qpq_result.success,
-                    failure_reason=qpq_result.failure_reason,
-                    pair_arrival_ms=[],
-                ))
-
-        num_nodes = len(name_to_app)
-        seed = config.get("topology", {}).get("random_seed", 0)
-
-        return BackendResult(
-            backend_name=self.name,
-            seed=seed,
-            num_nodes=num_nodes,
-            request_results=request_results,
-        )
+        return collect_qpq_results(name_to_app, config, self.name)

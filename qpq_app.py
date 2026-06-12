@@ -388,6 +388,56 @@ class QPQApp(RequestApp):
 
     # ---------- Results collection ----------
 
+    def finalize_unfinished_queries(self, now_ps: int | None = None) -> None:
+        """Mark queries that never reached an explicit success/failure terminal state.
+
+        SeQUeNCe may end with a reservation partially served: some pairs arrived,
+        but not enough to complete the QPQ round. Those queries never enter
+        _on_round_complete(), so they need an explicit final status.
+        """
+        if now_ps is None:
+            now_ps = self.node.timeline.now()
+
+        for query in self.queries.values():
+            if query.success or query.failure_reason:
+                continue
+
+            # Round 1 was issued but never completed.
+            if 1 in query.rounds and 2 not in query.rounds:
+                rnd = query.rounds[1]
+                if rnd.reservation is not None:
+                    rnd.pairs_delivered = len(
+                        self.entanglement_timestamps.get(rnd.reservation, [])
+                    )
+                    rnd.fidelities = list(
+                        self.entanglement_fidelities.get(rnd.reservation, [])
+                    )
+                query.success = False
+                query.failure_reason = "round1_incomplete"
+                query.total_time_ps = max(0, now_ps - rnd.start_time_ps)
+                continue
+
+            # Round 2 was issued but never completed.
+            if 2 in query.rounds:
+                rnd = query.rounds[2]
+                if rnd.reservation is not None:
+                    rnd.pairs_delivered = len(
+                        self.entanglement_timestamps.get(rnd.reservation, [])
+                    )
+                    rnd.fidelities = list(
+                        self.entanglement_fidelities.get(rnd.reservation, [])
+                    )
+                query.success = False
+                query.failure_reason = "round2_incomplete"
+                round1_start = query.rounds[1].start_time_ps if 1 in query.rounds else rnd.start_time_ps
+                query.total_time_ps = max(0, now_ps - round1_start)
+                continue
+
+            # Should be rare: query exists but no round was issued.
+            query.success = False
+            query.failure_reason = "simulation_end"
+            query.total_time_ps = 0
+
     def get_results(self) -> List[QPQResult]:
         """Collect results for all completed queries on this node."""
         results = []
