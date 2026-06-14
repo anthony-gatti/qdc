@@ -176,26 +176,50 @@ class ACPBackend(BackendBase):
 
     def _print_acp_counters(self, network_topo: RouterNetTopoAdaptive) -> None:
         counters = defaultdict(int)
+        counter_names = (
+            "start_invocations",
+            "start_events_scheduled",
+            "start_events_no_memory",
+            "start_events_select_none",
+            "start_events_after_response",
+            "ac_request_sent",
+            "ac_request_received",
+            "ac_respond_sent",
+            "ac_respond_received",
+            "blocked_on_memory_entries",
+            "blocked_on_memory_wakeups",
+            "blocked_on_memory_duplicate_wakeups_avoided",
+            "reservation_schedule_attempts",
+            "reservation_schedule_successes",
+            "reservation_schedule_failures",
+            "adaptive_rule_load_batches",
+            "adaptive_rules_scheduled",
+            "request_rule_load_batches",
+            "request_rules_scheduled",
+            "rule_load_invocations",
+            "generation_protocol_starts",
+            "generation_attempts",
+            "generation_successes",
+            "cache_checks",
+            "cache_hits",
+            "cache_misses",
+            "probability_updates",
+        )
         for router in network_topo.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER):
             acp = getattr(router, "adaptive_continuous", None)
             if acp is None:
                 continue
-            counters["generation_attempts"] += getattr(acp, "generation_attempts", 0)
-            counters["generation_successes"] += getattr(acp, "generation_successes", 0)
-            counters["cache_checks"] += getattr(acp, "cache_checks", 0)
-            counters["cache_hits"] += getattr(acp, "cache_hits", 0)
-            counters["cache_misses"] += getattr(acp, "cache_misses", 0)
-            counters["probability_updates"] += getattr(acp, "probability_updates", 0)
+            for name in counter_names:
+                counters[name] += getattr(acp, name, 0)
 
-        print(
-            "    ACP counters: "
-            f"generation_attempts={counters['generation_attempts']}, "
-            f"generation_successes={counters['generation_successes']}, "
-            f"cache_checks={counters['cache_checks']}, "
-            f"cache_hits={counters['cache_hits']}, "
-            f"cache_misses={counters['cache_misses']}, "
-            f"probability_updates={counters['probability_updates']}"
+        tl = network_topo.get_timeline()
+        timeline_summary = (
+            f"timeline_scheduled={getattr(tl, 'schedule_counter', 0)}, "
+            f"timeline_run={getattr(tl, 'run_counter', 0)}, "
+            f"timeline_pending={len(getattr(tl, 'events', []))}"
         )
+        counter_summary = ", ".join(f"{name}={counters[name]}" for name in counter_names)
+        print(f"    ACP counters: {counter_summary}, {timeline_summary}")
     
     def _collect_pair_results(
         self,
