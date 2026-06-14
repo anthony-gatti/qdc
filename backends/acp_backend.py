@@ -15,7 +15,7 @@ from typing import Optional
 
 ACP_DIR = os.environ.get(
     "QDC_ACP_DIR",
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "acp")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "external", "acp")),
 )
 
 if os.path.isdir(ACP_DIR) and ACP_DIR not in sys.path:
@@ -167,7 +167,35 @@ class ACPBackend(BackendBase):
         tl.init()
         tl.run()
 
+        for app in name_to_app.values():
+            app.finalize_unfinished_queries(tl.now())
+
+        self._print_acp_counters(network_topo)
+
         return collect_qpq_results(name_to_app, config, self.name)
+
+    def _print_acp_counters(self, network_topo: RouterNetTopoAdaptive) -> None:
+        counters = defaultdict(int)
+        for router in network_topo.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER):
+            acp = getattr(router, "adaptive_continuous", None)
+            if acp is None:
+                continue
+            counters["generation_attempts"] += getattr(acp, "generation_attempts", 0)
+            counters["generation_successes"] += getattr(acp, "generation_successes", 0)
+            counters["cache_checks"] += getattr(acp, "cache_checks", 0)
+            counters["cache_hits"] += getattr(acp, "cache_hits", 0)
+            counters["cache_misses"] += getattr(acp, "cache_misses", 0)
+            counters["probability_updates"] += getattr(acp, "probability_updates", 0)
+
+        print(
+            "    ACP counters: "
+            f"generation_attempts={counters['generation_attempts']}, "
+            f"generation_successes={counters['generation_successes']}, "
+            f"cache_checks={counters['cache_checks']}, "
+            f"cache_hits={counters['cache_hits']}, "
+            f"cache_misses={counters['cache_misses']}, "
+            f"probability_updates={counters['probability_updates']}"
+        )
     
     def _collect_pair_results(
         self,

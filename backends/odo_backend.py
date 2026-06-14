@@ -89,4 +89,4 @@ class ODOBackend(BackendBase):
         for app in name_to_app.values():
             app.finalize_unfinished_queries(tl.now())
 
-        return collect_qpq_results(name_to_app, config, self.named)
+        return collect_qpq_results(name_to_app, config, self.name)
