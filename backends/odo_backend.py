@@ -89,4 +89,29 @@ class ODOBackend(BackendBase):
         for app in name_to_app.values():
             app.finalize_unfinished_queries(tl.now())
 
-        return collect_qpq_results(name_to_app, config, self.name)
+        result = collect_qpq_results(name_to_app, config, self.name)
+        self._print_diagnostic_counters(tl, result)
+        return result
+
+    def _print_diagnostic_counters(self, tl, result: BackendResult) -> None:
+        max_tts_ms = max(
+            (rr.time_to_serve_ms or 0.0 for rr in result.request_results),
+            default=0.0,
+        )
+        max_pair_arrival_ms = max(
+            (arrival for rr in result.request_results for arrival in rr.pair_arrival_ms),
+            default=0.0,
+        )
+        n_success = sum(1 for rr in result.request_results if rr.success)
+        print(
+            "    ODO counters: "
+            f"timeline_scheduled={getattr(tl, 'schedule_counter', 0)}, "
+            f"timeline_run={getattr(tl, 'run_counter', 0)}, "
+            f"timeline_pending={len(getattr(tl, 'events', []))}, "
+            f"timeline_now_ps={tl.now()}, "
+            f"timeline_stop_ps={getattr(tl, 'stop_time', 0)}, "
+            f"result_successes={n_success}, "
+            f"result_count={len(result.request_results)}, "
+            f"max_tts_ms={max_tts_ms:.3f}, "
+            f"max_pair_arrival_ms={max_pair_arrival_ms:.3f}"
+        )

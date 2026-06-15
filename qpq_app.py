@@ -106,6 +106,7 @@ class QPQApp(RequestApp):
         # Pair tracking (both sides)
         self.entanglement_timestamps = defaultdict(list)
         self.entanglement_fidelities = defaultdict(list)
+        self.diagnostic_counters = defaultdict(int)
 
     def submit_query(
         self,
@@ -221,7 +222,9 @@ class QPQApp(RequestApp):
 
     def _handle_initiator_pair(self, info: "MemoryInfo", reservation) -> None:
         """Handle a delivered pair on the initiator (client) side."""
+        self.diagnostic_counters["initiator_pair_callbacks"] += 1
         if info.fidelity < reservation.fidelity:
+            self.diagnostic_counters["initiator_low_fidelity_rejects"] += 1
             log.logger.info(
                 f"{self.node.name}: pair fidelity {info.fidelity:.4f} "
                 f"below threshold {reservation.fidelity}"
@@ -247,10 +250,12 @@ class QPQApp(RequestApp):
 
     def _handle_responder_pair(self, info: "MemoryInfo", reservation) -> None:
         """Handle a delivered pair on the responder (QDC) side."""
+        self.diagnostic_counters["responder_pair_callbacks"] += 1
         if info.fidelity >= reservation.fidelity:
             self.node.resource_manager.update(None, info.memory, MemoryInfo.RAW)
             self._cache_entangled_path(reservation)
         else:
+            self.diagnostic_counters["responder_low_fidelity_rejects"] += 1
             log.logger.info(
                 f"{self.node.name}: responder pair fidelity {info.fidelity:.4f} "
                 f"below threshold {reservation.fidelity}"
