@@ -53,13 +53,6 @@ class ODOBackend(BackendBase):
         network_topo = RouterNetTopo(topo_json_path)
         tl = network_topo.get_timeline()
 
-        # Temporary debug print for this spike.
-        print("    sequence formalism:", tl.quantum_manager.get_active_formalism())
-        print("    quantum manager:", type(tl.quantum_manager).__name__)
-        print("    EGA type:", EntanglementGenerationA.get_global_type())
-        print("    EGB type:", EntanglementGenerationB.get_global_type())
-        print("    BBPSSW formalism:", BBPSSWProtocol.get_formalism())
-
         name_to_app = {}
         purify = config.get("hardware", {}).get("purify", True)
 
