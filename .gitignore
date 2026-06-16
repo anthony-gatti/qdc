@@ -3,4 +3,4 @@ __pycache__/
 external/
 backends/__pycache__/
 *.log
-test_odo_validate/
+docs/*.txt
