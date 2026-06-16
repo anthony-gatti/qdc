@@ -25,7 +25,7 @@ The framework measures **network-level cost only**: time-to-serve, fidelity, suc
 
 Framework and infrastructure:
 
-- **Topology generator**: hub-spoke and linear topologies with parametric depth, link distance, and density.
+- **Topology generator**: central-hop and linear topologies with parametric depth, link distance, and density.
 - **QPQ application**: SeQUeNCe `Application` subclass implementing the 2-round protocol structure with per-round deadlines and pair-arrival timestamping.
 - **Workload generator**: produces QPQ query specs with configurable client count, queries per client, inter-query timing, and database size.
 - **Backend abstraction**: each routing algorithm implements `BackendBase` and plugs into the same experiment runner.
@@ -114,8 +114,8 @@ Each new algorithm should plug in via `BackendBase` and produce results in the s
 
 **Evaluation extensions**:
 
-- **Realistic topologies**: rerun characterization on Topology Zoo backbones (SURFnet, GÉANT, Colt, etc.) instead of synthetic hub-spoke. Tree-structured topologies and meshes likely produce different protocol orderings.
-- **Push the fidelity boundary**: current sweep keeps fidelity well above the 0.7 threshold at all tested operating points, so fidelity-aware algorithms have nothing to differentiate on. Need longer distances (60+ km) or deeper hops to find where fidelity becomes binding.
+- **Realistic topologies**: rerun characterization on Topology Zoo backbones (SURFnet, GÉANT, Colt, etc.) instead of synthetic. Different generated topologies also likely produce different protocol orderings.
+- **Push the fidelity boundary**: current sweep keeps fidelity well above the 0.7 threshold at all tested operating points, so fidelity-aware algorithms have nothing to differentiate on. Need longer distances (60+ km), lower initial fidelity, or deeper hops to find where fidelity becomes binding.
 - **Concurrent client load**: current workload has well-spaced queries (6s period, single round at a time per client). Need to characterize what happens under heavy concurrent load where hub memory contention becomes the bottleneck.
 - **Hardware parameter sensitivity**: sweep link generation rate, swap success probability, memory coherence time independently to understand which physical parameters most strongly determine the frontier.
 
