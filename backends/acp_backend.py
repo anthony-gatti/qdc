@@ -15,14 +15,21 @@ from typing import Optional
 
 ACP_DIR = os.environ.get(
     "QDC_ACP_DIR",
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "acp")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "external", "acp")),
 )
 
 if os.path.isdir(ACP_DIR) and ACP_DIR not in sys.path:
     sys.path.insert(0, ACP_DIR)
 
 from sequence.topology.router_net_topo import RouterNetTopo
+from sequence.constants import BELL_DIAGONAL_STATE_FORMALISM
 from sequence.constants import MILLISECOND
+from sequence.kernel.quantum_manager import QuantumManager
+from sequence.entanglement_management.generation import (
+    EntanglementGenerationA,
+    EntanglementGenerationB,
+)
+from sequence.entanglement_management.purification.bbpssw_protocol import BBPSSWProtocol
 
 # ACP imports — these come from the acp/ fork
 try:
@@ -47,7 +54,13 @@ class ACPBackend(BackendBase):
     With adaptive_max_memory>0, this is ACP with continuous pre-generation.
     """
 
-    def __init__(self, adaptive_max_memory: int = 8, update_prob: bool = True):
+    def __init__(
+        self,
+        adaptive_max_memory: int = 8,
+        update_prob: bool = True,
+        background_enabled: bool = True,
+        name_override: Optional[str] = None,
+    ):
         """
         Args:
             adaptive_max_memory: memories per node for ACP background generation.
@@ -61,6 +74,8 @@ class ACPBackend(BackendBase):
             )
         self._adaptive_max_memory = adaptive_max_memory
         self._update_prob = update_prob
+        self._background_enabled = background_enabled
+        self._name_override = name_override
 
     @property
     def adaptive_max_memory(self) -> int:
@@ -68,6 +83,8 @@ class ACPBackend(BackendBase):
 
     @property
     def name(self) -> str:
+        if self._name_override is not None:
+            return self._name_override
         return f"acp_m{self._adaptive_max_memory}"
 
     def run(
@@ -96,6 +113,7 @@ class ACPBackend(BackendBase):
         config: dict,
     ) -> BackendResult:
         """Run with individual pair requests (Phase 1 mode)."""
+        self._configure_current_sequence_stack()
         network_topo = RouterNetTopoAdaptive(topo_json_path)
         tl = network_topo.get_timeline()
 
@@ -110,6 +128,8 @@ class ACPBackend(BackendBase):
             router.adaptive_continuous.update_prob = self._update_prob
             router.adaptive_continuous.print_prob_table = False
             router.resource_manager.purify = purify
+            if not self._background_enabled:
+                router.active = False
 
         for request in request_queue:
             req_id, src_name, dst_name, start_time, end_time, \
@@ -133,6 +153,7 @@ class ACPBackend(BackendBase):
         config: dict,
     ) -> BackendResult:
         """Run with QPQ multi-round queries (Phase 3 mode)."""
+        self._configure_current_sequence_stack()
         network_topo = RouterNetTopoAdaptive(topo_json_path)
         tl = network_topo.get_timeline()
 
@@ -147,6 +168,8 @@ class ACPBackend(BackendBase):
             router.adaptive_continuous.update_prob = self._update_prob
             router.adaptive_continuous.print_prob_table = False
             router.resource_manager.purify = purify
+            if not self._background_enabled:
+                router.active = False
 
         for spec in query_specs:
             src_name = spec["src"]
@@ -167,7 +190,88 @@ class ACPBackend(BackendBase):
         tl.init()
         tl.run()
 
+        for app in name_to_app.values():
+            app.finalize_unfinished_queries(tl.now())
+
+        self._print_acp_counters(network_topo)
+        self._print_qpq_diagnostic_counters(name_to_app)
+
         return collect_qpq_results(name_to_app, config, self.name)
+
+    def _configure_current_sequence_stack(self) -> None:
+        QuantumManager.set_global_manager_formalism(BELL_DIAGONAL_STATE_FORMALISM)
+        BBPSSWProtocol.set_formalism(BELL_DIAGONAL_STATE_FORMALISM)
+        EntanglementGenerationA.set_global_type("single_heralded")
+        EntanglementGenerationB.set_global_type("single_heralded")
+
+    def _print_acp_counters(self, network_topo: RouterNetTopoAdaptive) -> None:
+        counters = defaultdict(int)
+        counter_names = (
+            "start_invocations",
+            "start_events_scheduled",
+            "start_events_no_memory",
+            "start_events_select_none",
+            "start_events_after_response",
+            "ac_request_sent",
+            "ac_request_received",
+            "ac_respond_sent",
+            "ac_respond_received",
+            "blocked_on_memory_entries",
+            "blocked_on_memory_wakeups",
+            "blocked_on_memory_duplicate_wakeups_avoided",
+            "reservation_schedule_attempts",
+            "reservation_schedule_successes",
+            "reservation_schedule_failures",
+            "adaptive_rule_load_batches",
+            "adaptive_rules_scheduled",
+            "request_rule_load_batches",
+            "request_rules_scheduled",
+            "rule_load_invocations",
+            "generation_protocol_starts",
+            "app_generation_protocol_starts",
+            "background_generation_protocol_starts",
+            "app_generation_successes",
+            "background_generation_successes",
+            "app_generation_failures",
+            "background_generation_failures",
+            "swap_starts",
+            "swap_successes",
+            "swap_failures",
+            "generation_attempts",
+            "generation_successes",
+            "cache_checks",
+            "cache_hits",
+            "cache_misses",
+            "probability_updates",
+        )
+        for router in network_topo.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER):
+            acp = getattr(router, "adaptive_continuous", None)
+            if acp is None:
+                continue
+            for name in counter_names:
+                counters[name] += getattr(acp, name, 0)
+
+        tl = network_topo.get_timeline()
+        timeline_summary = (
+            f"timeline_scheduled={getattr(tl, 'schedule_counter', 0)}, "
+            f"timeline_run={getattr(tl, 'run_counter', 0)}, "
+            f"timeline_pending={len(getattr(tl, 'events', []))}, "
+            f"timeline_now_ps={tl.now()}, "
+            f"timeline_stop_ps={getattr(tl, 'stop_time', 0)}"
+        )
+        counter_summary = ", ".join(f"{name}={counters[name]}" for name in counter_names)
+        print(f"    ACP counters: {counter_summary}, {timeline_summary}")
+
+    def _print_qpq_diagnostic_counters(self, name_to_app: dict) -> None:
+        counters = defaultdict(int)
+        for app in name_to_app.values():
+            for name, value in getattr(app, "diagnostic_counters", {}).items():
+                counters[name] += value
+        if counters:
+            counter_summary = ", ".join(
+                f"{name}={counters[name]}" for name in sorted(counters)
+            )
+            print(f"    QPQ diagnostic counters: {counter_summary}")
     
     def _collect_pair_results(
         self,
