@@ -106,6 +106,7 @@ class QPQApp(RequestApp):
         # Pair tracking (both sides)
         self.entanglement_timestamps = defaultdict(list)
         self.entanglement_fidelities = defaultdict(list)
+        self.low_fidelity_rejects = defaultdict(int)
         self.diagnostic_counters = defaultdict(int)
 
     def submit_query(
@@ -225,6 +226,7 @@ class QPQApp(RequestApp):
         self.diagnostic_counters["initiator_pair_callbacks"] += 1
         if info.fidelity < reservation.fidelity:
             self.diagnostic_counters["initiator_low_fidelity_rejects"] += 1
+            self.low_fidelity_rejects[reservation] += 1
             log.logger.info(
                 f"{self.node.name}: pair fidelity {info.fidelity:.4f} "
                 f"below threshold {reservation.fidelity}"

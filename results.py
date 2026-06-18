@@ -7,6 +7,8 @@ import json
 from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Any, Optional
 
+OUTPUT_SCHEMA_VERSION = "2"
+
 
 @dataclass
 class RequestResult:
@@ -23,6 +25,13 @@ class RequestResult:
     # Pair arrival times (ms, relative to query start). Flat list across rounds.
     # Empty for non-QPQ workloads or failed queries with no pairs delivered.
     pair_arrival_ms: List[float] = field(default_factory=list)
+    first_pair_arrival_ms: Optional[float] = None
+    round1_completion_ms: Optional[float] = None
+    round2_completion_ms: Optional[float] = None
+    round1_pairs: int = 0
+    round2_pairs: int = 0
+    expected_pairs: int = 0
+    pairs_rejected_fidelity: int = 0
 
 
 @dataclass
