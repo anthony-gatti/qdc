@@ -32,6 +32,17 @@ class RequestResult:
     round2_pairs: int = 0
     expected_pairs: int = 0
     pairs_rejected_fidelity: int = 0
+    # Deprecated compatibility aliases:
+    # delivered_background_pairs == delivered_pairs_with_background_contribution
+    # delivered_application_pairs == delivered_pairs_fully_fresh
+    delivered_background_pairs: int = 0
+    delivered_application_pairs: int = 0
+    delivered_pairs_with_background_contribution: int = 0
+    delivered_pairs_fully_background_supported: int = 0
+    delivered_pairs_partially_background_supported: int = 0
+    delivered_pairs_fully_fresh: int = 0
+    delivered_background_elementary_edges: int = 0
+    delivered_fresh_elementary_edges: int = 0
 
 
 @dataclass

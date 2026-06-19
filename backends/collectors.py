@@ -22,6 +22,12 @@ def collect_qpq_results(name_to_app: dict, config: dict, backend_name: str) -> B
             round1_completion_ms = None
             round2_completion_ms = None
             pairs_rejected_fidelity = 0
+            delivered_pairs_with_background_contribution = 0
+            delivered_pairs_fully_background_supported = 0
+            delivered_pairs_partially_background_supported = 0
+            delivered_pairs_fully_fresh = 0
+            delivered_background_elementary_edges = 0
+            delivered_fresh_elementary_edges = 0
             if query is not None:
                 round1_start_ps = 0
                 if 1 in query.rounds:
@@ -40,6 +46,36 @@ def collect_qpq_results(name_to_app: dict, config: dict, backend_name: str) -> B
                     pairs_rejected_fidelity += app.low_fidelity_rejects.get(
                         rnd.reservation, 0
                     )
+                    for provenance in app.entanglement_provenance.get(rnd.reservation, []):
+                        if isinstance(provenance, dict):
+                            elementary_sources = provenance.get("elementary_sources") or []
+                            if elementary_sources:
+                                bg_edges = sum(
+                                    1 for source in elementary_sources
+                                    if source.get("source") == "background"
+                                )
+                                fresh_edges = sum(
+                                    1 for source in elementary_sources
+                                    if source.get("source") == "application"
+                                )
+                            else:
+                                source = provenance.get("source", "unknown")
+                                bg_edges = 1 if source == "background" else 0
+                                fresh_edges = 1 if source == "application" else 0
+                        else:
+                            bg_edges = 1 if provenance == "background" else 0
+                            fresh_edges = 1 if provenance == "application" else 0
+
+                        delivered_background_elementary_edges += bg_edges
+                        delivered_fresh_elementary_edges += fresh_edges
+                        if bg_edges > 0:
+                            delivered_pairs_with_background_contribution += 1
+                            if fresh_edges > 0:
+                                delivered_pairs_partially_background_supported += 1
+                            else:
+                                delivered_pairs_fully_background_supported += 1
+                        else:
+                            delivered_pairs_fully_fresh += 1
 
                     if rnd.end_time_ps > 0:
                         completion_ms = (rnd.end_time_ps - round1_start_ps) / MILLISECOND
@@ -72,6 +108,14 @@ def collect_qpq_results(name_to_app: dict, config: dict, backend_name: str) -> B
                 round2_pairs=qpq_result.round2_pairs,
                 expected_pairs=2 * qpq_result.pairs_per_round,
                 pairs_rejected_fidelity=pairs_rejected_fidelity,
+                delivered_background_pairs=delivered_pairs_with_background_contribution,
+                delivered_application_pairs=delivered_pairs_fully_fresh,
+                delivered_pairs_with_background_contribution=delivered_pairs_with_background_contribution,
+                delivered_pairs_fully_background_supported=delivered_pairs_fully_background_supported,
+                delivered_pairs_partially_background_supported=delivered_pairs_partially_background_supported,
+                delivered_pairs_fully_fresh=delivered_pairs_fully_fresh,
+                delivered_background_elementary_edges=delivered_background_elementary_edges,
+                delivered_fresh_elementary_edges=delivered_fresh_elementary_edges,
             ))
 
     seed = config.get("topology", {}).get("random_seed", 0)

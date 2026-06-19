@@ -83,6 +83,13 @@ def run_one_cell(
     config["topology"]["qdc_node_index"] = num_nodes // 2
     config["topology"]["random_seed"] = seed
     config["workload"]["database_size_log"] = database_size_log
+    if config.get("diagnostics", {}).get("cache_lifecycle", False):
+        diag_dir = os.path.join(output_dir, "cache_lifecycle")
+        os.makedirs(diag_dir, exist_ok=True)
+        config.setdefault("diagnostics", {})["cache_lifecycle_output"] = os.path.join(
+            diag_dir,
+            f"cache_d{int(distance_km)}_n{num_nodes}_nb{database_size_log}_s{seed}_{backend_name}.json",
+        )
 
     hw = config.get("hardware", {})
     exp = config.get("experiment", {})
@@ -204,7 +211,16 @@ def run_one_cell(
             "round2_pairs": rr.round2_pairs,
             "expected_pairs": rr.expected_pairs,
             "pairs_rejected_fidelity": rr.pairs_rejected_fidelity,
+            "delivered_background_pairs": rr.delivered_background_pairs,
+            "delivered_application_pairs": rr.delivered_application_pairs,
+            "delivered_pairs_with_background_contribution": rr.delivered_pairs_with_background_contribution,
+            "delivered_pairs_fully_background_supported": rr.delivered_pairs_fully_background_supported,
+            "delivered_pairs_partially_background_supported": rr.delivered_pairs_partially_background_supported,
+            "delivered_pairs_fully_fresh": rr.delivered_pairs_fully_fresh,
+            "delivered_background_elementary_edges": rr.delivered_background_elementary_edges,
+            "delivered_fresh_elementary_edges": rr.delivered_fresh_elementary_edges,
             "pair_arrival_ms": ";".join(f"{t:.3f}" for t in rr.pair_arrival_ms),
+            "walltime_s": elapsed,
         })
 
     n_success = sum(1 for r in records if r["success"])
@@ -222,7 +238,16 @@ CSV_FIELDS = [
     "success", "failure_reason", "tts_ms", "fidelity",
     "first_pair_arrival_ms", "round1_completion_ms", "round2_completion_ms",
     "round1_pairs", "round2_pairs", "expected_pairs",
-    "pairs_rejected_fidelity", "pair_arrival_ms",
+    "pairs_rejected_fidelity", "delivered_background_pairs",
+    "delivered_application_pairs",
+    "delivered_pairs_with_background_contribution",
+    "delivered_pairs_fully_background_supported",
+    "delivered_pairs_partially_background_supported",
+    "delivered_pairs_fully_fresh",
+    "delivered_background_elementary_edges",
+    "delivered_fresh_elementary_edges",
+    "pair_arrival_ms",
+    "walltime_s",
 ]
 
 
@@ -452,16 +477,25 @@ def main():
                         help="Fast pilot: 3 seeds, 2 distances")
     parser.add_argument("--skip-primary", action="store_true")
     parser.add_argument("--skip-dbsize", action="store_true")
+    parser.add_argument(
+        "--cache-diagnostics",
+        action="store_true",
+        help="Write per-cell ACP cache lifecycle diagnostics under the output directory.",
+    )
     parser.add_argument("--num-nodes", type=int, default=25,
                         help="Nodes for primary sweep (default: 25, gives hops 1-7)")
     parser.add_argument("--seeds", type=int, default=15,
                         help="Number of seeds per cell (default: 15)")
+    parser.add_argument("--seed-start", type=int, default=42,
+                        help="First seed value (default: 42)")
     args = parser.parse_args()
 
     with open(args.config) as f:
         base_config = yaml.safe_load(f)
 
     base_config.setdefault("workload", {})["mode"] = "qpq"
+    if args.cache_diagnostics:
+        base_config.setdefault("diagnostics", {})["cache_lifecycle"] = True
 
     exp_cfg = base_config.get("experiment", {})
     if args.backends:
@@ -471,12 +505,12 @@ def main():
 
     if args.pilot:
         distances_km = [10.0, 40.0]
-        seeds = list(range(42, 45))  # 3 seeds
+        seeds = list(range(args.seed_start, args.seed_start + 3))  # 3 seeds
         db_sizes = [10, 20]
         print("=== PILOT MODE ===")
     else:
         distances_km = exp_cfg.get("distances_km", [10.0, 20.0, 30.0, 40.0])
-        seeds = list(range(42, 42 + args.seeds))
+        seeds = list(range(args.seed_start, args.seed_start + args.seeds))
         db_sizes = exp_cfg.get("db_sizes", [5, 10, 15, 20])
 
     if args.distances:

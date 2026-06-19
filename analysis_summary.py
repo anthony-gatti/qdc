@@ -19,6 +19,7 @@ NUMERIC_FIELDS = {
     "first_pair_arrival_ms": float,
     "round1_completion_ms": float,
     "round2_completion_ms": float,
+    "walltime_s": float,
 }
 INT_FIELDS = {
     "seed",
@@ -31,6 +32,14 @@ INT_FIELDS = {
     "round2_pairs",
     "expected_pairs",
     "pairs_rejected_fidelity",
+    "delivered_background_pairs",
+    "delivered_application_pairs",
+    "delivered_pairs_with_background_contribution",
+    "delivered_pairs_fully_background_supported",
+    "delivered_pairs_partially_background_supported",
+    "delivered_pairs_fully_fresh",
+    "delivered_background_elementary_edges",
+    "delivered_fresh_elementary_edges",
 }
 
 
@@ -54,8 +63,6 @@ def load_rows(path: str) -> List[dict]:
                 backend = row.get("backend", "")
                 if backend.startswith("acp_m") and backend[5:].isdigit():
                     row["acp_memory_budget"] = int(backend[5:])
-            if row["expected_pairs"] == 0 and row["database_size_log"]:
-                row["expected_pairs"] = 2 * (2 * row["database_size_log"] + 1)
             row["pair_arrival_list"] = parse_pair_arrivals(row.get("pair_arrival_ms", ""))
             rows.append(row)
     return rows
@@ -120,6 +127,13 @@ def summarize_groups(rows: List[dict], keys: List[str], min_success: int) -> Lis
             sum(r.get("expected_pairs", 0) for r in reject_rows)
             if reject_rows else None
         )
+        delivered_with_bg = sum(r.get("delivered_pairs_with_background_contribution", 0) for r in recs)
+        delivered_full_bg = sum(r.get("delivered_pairs_fully_background_supported", 0) for r in recs)
+        delivered_partial_bg = sum(r.get("delivered_pairs_partially_background_supported", 0) for r in recs)
+        delivered_fresh = sum(r.get("delivered_pairs_fully_fresh", 0) for r in recs)
+        delivered_bg_edges = sum(r.get("delivered_background_elementary_edges", 0) for r in recs)
+        delivered_fresh_edges = sum(r.get("delivered_fresh_elementary_edges", 0) for r in recs)
+        walltimes = [r["walltime_s"] for r in recs if r.get("walltime_s") is not None]
         result = dict(zip(keys, key))
         result.update({
             "n_queries": len(recs),
@@ -135,6 +149,13 @@ def summarize_groups(rows: List[dict], keys: List[str], min_success: int) -> Lis
             "delivered_fidelity_mean": sum(fids) / len(fids) if len(fids) >= min_success else math.nan,
             "pairs_rejected_fidelity": rejected,
             "expected_pairs": expected,
+            "delivered_pairs_with_background_contribution": delivered_with_bg,
+            "delivered_pairs_fully_background_supported": delivered_full_bg,
+            "delivered_pairs_partially_background_supported": delivered_partial_bg,
+            "delivered_pairs_fully_fresh": delivered_fresh,
+            "delivered_background_elementary_edges": delivered_bg_edges,
+            "delivered_fresh_elementary_edges": delivered_fresh_edges,
+            "walltime_s": max(walltimes) if walltimes else math.nan,
             "fraction_pairs_rejected_fidelity": (
                 rejected / expected if expected else math.nan
             ),
@@ -221,6 +242,13 @@ def main() -> None:
         "round1_completion_p50_ms", "round2_completion_p50_ms",
         "delivered_fidelity_mean", "pairs_rejected_fidelity", "expected_pairs",
         "fraction_pairs_rejected_fidelity", "sample_status",
+        "delivered_pairs_with_background_contribution",
+        "delivered_pairs_fully_background_supported",
+        "delivered_pairs_partially_background_supported",
+        "delivered_pairs_fully_fresh",
+        "delivered_background_elementary_edges",
+        "delivered_fresh_elementary_edges",
+        "walltime_s",
     ]
     summary = summarize_groups(
         rows,
