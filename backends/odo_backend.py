@@ -18,6 +18,10 @@ from sequence.entanglement_management.generation import (
     EntanglementGenerationB,
 )
 from sequence.entanglement_management.purification.bbpssw_protocol import BBPSSWProtocol
+from sequence.entanglement_management.swapping import (
+    EntanglementSwappingA,
+    EntanglementSwappingB,
+)
 
 from backends.base import BackendBase
 from backends.collectors import collect_qpq_results
@@ -46,6 +50,8 @@ class ODOBackend(BackendBase):
         # create their EntanglementGenerationB protocol during topology loading.
         QuantumManager.set_global_manager_formalism(BELL_DIAGONAL_STATE_FORMALISM)
         BBPSSWProtocol.set_formalism(BELL_DIAGONAL_STATE_FORMALISM)
+        EntanglementSwappingA.set_formalism(BELL_DIAGONAL_STATE_FORMALISM)
+        EntanglementSwappingB.set_formalism(BELL_DIAGONAL_STATE_FORMALISM)
 
         EntanglementGenerationA.set_global_type("single_heralded")
         EntanglementGenerationB.set_global_type("single_heralded")
@@ -54,12 +60,10 @@ class ODOBackend(BackendBase):
         tl = network_topo.get_timeline()
 
         name_to_app = {}
-        purify = config.get("hardware", {}).get("purify", True)
 
         for router in network_topo.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER):
             app = QPQApp(router)
             name_to_app[router.name] = app
-            router.resource_manager.purify = purify
 
         for spec in query_specs:
             src_name = spec["src"]

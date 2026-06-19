@@ -32,10 +32,11 @@ Framework and infrastructure:
 - **Sweep infrastructure**: 2D parameter sweeps over `(distance × seed)` and `(database_size × seed)` with consistent seed counts, producing a unified per-query CSV.
 - **Plotting**: six characterization charts (success-rate heatmap, TTS by distance, fidelity by hops, db-size scaling, failure decomposition, pair-arrival timeline).
 
-Algorithms implemented:
+Supported backends on SeQUeNCe v1.0.0:
 
-- **ODO** (on-demand shortest path) — baseline
-- **ACP** (continuous pre-generation) — via the ACP fork of SeQUeNCe
+- **ODO** — on-demand shortest path with no pregeneration.
+- **acp_no_bg** — the same application path through ACP infrastructure, with background work disabled.
+- **acp_m1 / acp_m6** — ACP continuous neighbor-link pregeneration with one or six adaptive memories per node and atomic cache adoption by normal reservations.
 
 A first round of evaluation has been run for ODO and ACP across 4 link distances (10/20/30/40 km), 7 hop counts (1–7), 4 database sizes (n = 5, 10, 15, 20), with 15 seeds per configuration. See `sweep2d_final/figures/` for results.
 
@@ -57,26 +58,28 @@ qdc_eval/
 
 ## Setup
 
-This framework depends on two upstream repositories that are not included here. Expected directory layout:
+The supported environment is Python 3.12.13 with pristine SeQUeNCe v1.0.0 at
+commit `ffd7c837`. ACP integration code is bundled under `external/acp`; there is
+no separate patched SeQUeNCe or ACP checkout.
 
 ```
-qdc/
-├── qdc_eval/                # this repo
-├── SeQUeNCe/                # https://github.com/sequence-toolbox/SeQUeNCe
-└── acp/                     # ACP fork of SeQUeNCe
+qdc_project/
+├── qdc/                     # this repository
+└── SeQUeNCe/                # pristine v1.0.0 checkout
 ```
-
-`backends/acp_backend.py` adds `../acp/` to `sys.path` at import.
 
 ```bash
-python -m venv qdc_env
-source qdc_env/bin/activate
-
-cd ../SeQUeNCe && pip install -e .
-pip install numpy networkx matplotlib pyyaml
+QDC_PYTHON=/home/amg671/.conda/envs/qdc/bin/python
+"$QDC_PYTHON" --version
+"$QDC_PYTHON" -m pip install -e /home/amg671/qdc_project/SeQUeNCe
+"$QDC_PYTHON" -c 'import sequence; print(sequence.__file__)'
 ```
 
-Python 3.11 used during development.
+The import must resolve under `/home/amg671/qdc_project/SeQUeNCe`.
+
+ACP background purification is deliberately deferred in this baseline. Normal
+application reservations still use SeQUeNCe v1.0.0's official reservation,
+generation, purification-rule, swapping, and notification architecture.
 
 ## Running experiments
 

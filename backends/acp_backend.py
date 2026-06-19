@@ -1,12 +1,4 @@
-"""
-Backend that uses RouterNetTopoAdaptive from the ACP codebase.
-
-Covers both ODO (adaptive_max_memory=0) and ACP (adaptive_max_memory>0).
-The routing algorithm is shortest-path in both cases; the difference is
-whether pre-generated entanglement pairs are available.
-
-Requires: the acp/ fork to be on sys.path (or installed).
-"""
+"""ACP backend using the bundled v1.0.0 integration in ``external/acp``."""
 
 import sys
 import os
@@ -14,10 +6,7 @@ import json
 from collections import defaultdict
 from typing import Optional
 
-ACP_DIR = os.environ.get(
-    "QDC_ACP_DIR",
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "external", "acp")),
-)
+ACP_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "external", "acp"))
 
 if os.path.isdir(ACP_DIR) and ACP_DIR not in sys.path:
     sys.path.insert(0, ACP_DIR)
@@ -31,18 +20,15 @@ from sequence.entanglement_management.generation import (
     EntanglementGenerationB,
 )
 from sequence.entanglement_management.purification.bbpssw_protocol import BBPSSWProtocol
+from sequence.entanglement_management.swapping import (
+    EntanglementSwappingA,
+    EntanglementSwappingB,
+)
 from sequence.kernel.event import Event
 from sequence.kernel.process import Process
 
-# ACP imports — these come from the acp/ fork
-try:
-    from router_net_topo_adaptive import RouterNetTopoAdaptive
-    from request_app import RequestAppTimeToServe
-except ImportError as e:
-    raise ImportError(
-        "Could not import ACP modules. Set QDC_ACP_DIR to the patched ACP repo, "
-        "or install ACP so router_net_topo_adaptive.py is importable."
-    ) from e
+from router_net_topo_adaptive import RouterNetTopoAdaptive
+from request_app import RequestAppTimeToServe
 
 from backends.base import BackendBase
 from backends.collectors import collect_qpq_results
@@ -195,6 +181,12 @@ class CacheLifecycleDiagnostics:
             lifecycle_events.extend(getattr(acp, "lifecycle_events", []))
             for reason, count in getattr(acp, "cache_rejections", {}).items():
                 counters[f"cache_rejected_{reason}"] += count
+            for info in router.resource_manager.memory_manager:
+                memory = info.memory
+                if getattr(memory, "qdc_application_reservation", ""):
+                    counters["cleanup_app_owned_memories"] += 1
+                if getattr(memory, "qdc_claimed_by_reservation", ""):
+                    counters["cleanup_claimed_memories"] += 1
         return {
             "counters": dict(counters),
             "snapshots": self.snapshots,
@@ -274,8 +266,6 @@ class ACPBackend(BackendBase):
         tl = network_topo.get_timeline()
 
         name_to_app = {}
-        purify = config.get("hardware", {}).get("purify", True)
-
         for router in network_topo.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER):
             app = RequestAppTimeToServe(router)
             name_to_app[router.name] = app
@@ -287,7 +277,6 @@ class ACPBackend(BackendBase):
             forced_tables = config.get("diagnostics", {}).get("force_probability_table", {})
             if router.name in forced_tables:
                 router.adaptive_continuous.forced_probability_table = forced_tables[router.name]
-            router.resource_manager.purify = purify
             if not self._background_enabled:
                 router.active = False
 
@@ -318,8 +307,6 @@ class ACPBackend(BackendBase):
         tl = network_topo.get_timeline()
 
         name_to_app = {}
-        purify = config.get("hardware", {}).get("purify", True)
-
         for router in network_topo.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER):
             app = QPQApp(router)
             name_to_app[router.name] = app
@@ -331,7 +318,6 @@ class ACPBackend(BackendBase):
             forced_tables = config.get("diagnostics", {}).get("force_probability_table", {})
             if router.name in forced_tables:
                 router.adaptive_continuous.forced_probability_table = forced_tables[router.name]
-            router.resource_manager.purify = purify
             if not self._background_enabled:
                 router.active = False
 
@@ -373,6 +359,8 @@ class ACPBackend(BackendBase):
     def _configure_current_sequence_stack(self) -> None:
         QuantumManager.set_global_manager_formalism(BELL_DIAGONAL_STATE_FORMALISM)
         BBPSSWProtocol.set_formalism(BELL_DIAGONAL_STATE_FORMALISM)
+        EntanglementSwappingA.set_formalism(BELL_DIAGONAL_STATE_FORMALISM)
+        EntanglementSwappingB.set_formalism(BELL_DIAGONAL_STATE_FORMALISM)
         EntanglementGenerationA.set_global_type("single_heralded")
         EntanglementGenerationB.set_global_type("single_heralded")
 

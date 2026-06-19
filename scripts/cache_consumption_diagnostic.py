@@ -39,7 +39,6 @@ def base_config(output_path: str, force_probability_table: dict) -> dict:
             "memories_per_node": 12,
             "gate_fidelity": 0.99,
             "measurement_fidelity": 0.99,
-            "purify": False,
             "formalism": "bell_diagonal",
             "encoding_type": "single_heralded",
             "acp_formalism": "bell_diagonal",
@@ -192,6 +191,30 @@ def main() -> None:
         useful_force,
     ))
 
+    invalid_topo = generate_hub_spoke_topology(
+        num_nodes=2,
+        inter_node_distance_m=100.0,
+        memo_size=12,
+        adaptive_max_memory=1,
+        memory_fidelity=0.6,
+        memory_efficiency=1.0,
+        coherence_time_s=100.0,
+        stop_time_s=8.0,
+        seed=7,
+        extra_mesh_edges=0,
+        qdc_node_index=1,
+        encoding_type="single_heralded",
+        formalism="bell_diagonal",
+    )
+    summaries.append(run_case(
+        "below_fidelity_candidate",
+        outdir,
+        invalid_topo,
+        query("router_0", "router_1", start_s=1.5),
+        ACPBackend(adaptive_max_memory=1, name_override="acp_m1"),
+        useful_force,
+    ))
+
     mismatch_topo = generate_linear_topology(
         num_nodes=3,
         inter_node_distance_m=100.0,
@@ -339,6 +362,20 @@ def main() -> None:
             by_name["mismatched_demand"]["max_pregenerated_pair_records_at_request_start"] > 0
             and by_name["mismatched_demand"]["max_useful_pair_records_at_request_start"] == 0
             and by_name["mismatched_demand"]["delivered_pairs_with_background_contribution"] == 0
+        ),
+        "below_fidelity_candidate_rejected": (
+            by_name["below_fidelity_candidate"]["max_useful_pair_records_at_request_start"] > 0
+            and by_name["below_fidelity_candidate"]["counters"].get("cache_rejected_below_fidelity", 0) > 0
+            and by_name["below_fidelity_candidate"]["counters"]["background_pairs_consumed_by_app"] == 0
+            and not by_name["below_fidelity_candidate"]["success"]
+        ),
+        "failure_cleanup_releases_application_claims": (
+            by_name["below_fidelity_candidate"]["counters"].get("cleanup_app_owned_memories", 0) == 0
+            and by_name["below_fidelity_candidate"]["counters"].get("cleanup_claimed_memories", 0) == 0
+        ),
+        "successful_cleanup_releases_application_claims": (
+            by_name["useful_acp_m1"]["counters"].get("cleanup_app_owned_memories", 0) == 0
+            and by_name["useful_acp_m1"]["counters"].get("cleanup_claimed_memories", 0) == 0
         ),
         "three_node_swap_delivers_background": (
             by_name["three_node_swap_all_cached"]["success"]

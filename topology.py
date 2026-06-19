@@ -1,8 +1,8 @@
 """
 Generates SeQUeNCe-compatible JSON topology configs for QPQ evaluation.
 
-Produces hub-and-spoke topologies with a QDC server at the center,
-compatible with both RouterNetTopo and RouterNetTopoAdaptive.
+Produces hub-and-spoke topologies with a QDC server at the center for the
+supported SeQUeNCe v1.0.0 ODO and ACP topology loaders.
 
 Output JSON matches the format used by the ACP paper's line_5-m4.json:
 explicit nodes, qchannels, cchannels.

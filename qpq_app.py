@@ -272,10 +272,17 @@ class QPQApp(RequestApp):
         # Track delivery
         self.entanglement_timestamps[reservation].append(self.node.timeline.now())
         self.entanglement_fidelities[reservation].append(info.fidelity)
+        elementary_sources = list(getattr(info.memory, "qdc_elementary_sources", []))
+        if not elementary_sources and not self._has_acp():
+            path = getattr(reservation, "path", [])
+            elementary_sources = [
+                {"source": "application", "link": tuple(sorted(edge))}
+                for edge in zip(path, path[1:])
+            ]
         self.entanglement_provenance[reservation].append({
             "source": getattr(info.memory, "qdc_generation_source", "unknown"),
             "background_contribution": getattr(info.memory, "qdc_background_contribution", ""),
-            "elementary_sources": list(getattr(info.memory, "qdc_elementary_sources", [])),
+            "elementary_sources": elementary_sources,
         })
 
         # Free memory for next pair
@@ -308,7 +315,7 @@ class QPQApp(RequestApp):
         """Called when all pairs for a round have been delivered."""
         # Expire rules for this round's reservation
         self.node.resource_manager.expire_rules_by_reservation(reservation)
-        self._send_expire_rules_message(reservation)
+        self._expire_remote_round_rules(reservation)
 
         # Find query and round
         if reservation not in self._reservation_to_query:
@@ -419,20 +426,18 @@ class QPQApp(RequestApp):
                     node, time, reservation
                 )
 
-    def _send_expire_rules_message(self, reservation) -> None:
-        """Send expire-rule messages to intermediate nodes, if ACP is present."""
-        if not self._has_acp():
-            return
+    def _expire_remote_round_rules(self, reservation) -> None:
+        """Expire this completed round's rules on every remote path node.
+
+        Round 2 uses a distinct reservation, so early expiry of round 1 cannot
+        remove round-2 rules or terminate the enclosing QPQ query.
+        """
         if not hasattr(reservation, "path") or not reservation.path:
             return
 
-        path = reservation.path
-        if len(path) > 2:
-            for i in range(1, len(path) - 1):
-                node = path[i]
-                self.node.adaptive_continuous.send_expire_rules_message(
-                    node, reservation
-                )
+        for node in reservation.path:
+            if node != self.node.name:
+                self.node.resource_manager.expire_remote_rules(node, reservation)
 
     # ---------- Results collection ----------
 

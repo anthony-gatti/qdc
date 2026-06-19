@@ -103,7 +103,7 @@ def run_one_cell(
 
     # Backend-specific physical/topology mode.
     # For the current upstream SeQUeNCe ODO spike, use Bell diagonal + single heralded.
-    if backend_name in ("odo", "sequence_bd", "odo_vanilla"):
+    if backend_name == "odo":
         formalism = hw.get("formalism", "bell_diagonal")
         encoding_type = hw.get("encoding_type", "single_heralded")
     elif backend_name == "acp":
@@ -285,7 +285,7 @@ def _parse_int_list(value: str) -> List[int]:
 
 def _backend_budget(backend_name: str, config: dict) -> int:
     name = backend_name.lower()
-    if name in ("odo", "sequence_bd", "odo_vanilla"):
+    if name == "odo":
         return 0
     if name.startswith("acp_m") and name[5:].isdigit():
         return int(name[5:])
@@ -331,6 +331,7 @@ def write_manifest(
         },
         "git": {
             "qdc_commit": _git_commit(os.path.dirname(__file__)),
+            "acp_commit": _git_commit(os.path.join(os.path.dirname(__file__), "external", "acp")),
             "sequence_commit": _resolve_sequence_commit(),
         },
         "runtime": {
@@ -338,7 +339,7 @@ def write_manifest(
             "python_executable": sys.executable,
             "platform": platform.platform(),
             "pythonpath": os.environ.get("PYTHONPATH", ""),
-            "qdc_acp_dir": os.environ.get("QDC_ACP_DIR", ""),
+            "qdc_acp_dir": os.path.join(os.path.dirname(__file__), "external", "acp"),
             "qdc_sequence_dir": os.environ.get("QDC_SEQUENCE_DIR", ""),
         },
     }

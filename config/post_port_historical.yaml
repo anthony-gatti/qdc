@@ -10,7 +10,6 @@ hardware:
   acp_memory: 6
   gate_fidelity: 0.99
   measurement_fidelity: 0.99
-  purify: true
 
 workload:
   mode: "qpq"
