@@ -103,6 +103,11 @@ CLI flags:
 - `--num-nodes N` — topology size (default 25, gives hop depth 1–7)
 - `--seeds K` — seeds per cell (default 15)
 - `--skip-primary` / `--skip-dbsize` — run only one sweep
+- `--demand-diagnostics` — write per-reservation application demand JSON
+- `--cache-diagnostics` — write ACP cache lifecycle JSON
+
+Detailed diagnostics are stored below the output directory and do not expand
+the primary schema-v2 CSV.
 
 ## Next steps
 

@@ -35,6 +35,7 @@ from backends.collectors import collect_qpq_results
 from results import BackendResult, RequestResult
 from qpq_app import QPQApp, QPQResult
 from common import MILLISECOND
+from demand_diagnostics import ApplicationDemandDiagnostics
 
 
 class CacheLifecycleDiagnostics:
@@ -170,6 +171,11 @@ class CacheLifecycleDiagnostics:
                 "background_pairs_removed_other",
                 "fresh_app_pairs_generated",
                 "probability_updates",
+                "application_pause_entries",
+                "application_pause_rejections",
+                "application_pause_wakeups",
+                "background_rules_quiesced_for_application",
+                "background_emissions_during_application",
                 "invariant_stale_adaptive_cleanup_on_app_memory",
                 "invariant_fresh_generation_on_adopted_memory",
             ):
@@ -321,6 +327,16 @@ class ACPBackend(BackendBase):
             if not self._background_enabled:
                 router.active = False
 
+        demand_diagnostics = None
+        diag_cfg = config.get("diagnostics", {})
+        if diag_cfg.get("application_demand", False):
+            demand_diagnostics = ApplicationDemandDiagnostics(
+                network_topo, query_specs, self.name, self.adaptive_max_memory
+            )
+            demand_diagnostics.install(
+                network_topo.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER)
+            )
+
         for spec in query_specs:
             src_name = spec["src"]
             if src_name not in name_to_app:
@@ -338,7 +354,6 @@ class ACPBackend(BackendBase):
             )
 
         diagnostics = None
-        diag_cfg = config.get("diagnostics", {})
         if diag_cfg.get("cache_lifecycle", False):
             diagnostics = CacheLifecycleDiagnostics(network_topo, query_specs, topo_json_path)
             diagnostics.schedule()
@@ -353,6 +368,8 @@ class ACPBackend(BackendBase):
         self._print_qpq_diagnostic_counters(name_to_app)
         if diagnostics is not None:
             self._write_cache_lifecycle_diagnostics(diagnostics, config)
+        if demand_diagnostics is not None:
+            demand_diagnostics.write(diag_cfg["application_demand_output"])
 
         return collect_qpq_results(name_to_app, config, self.name)
 
@@ -379,6 +396,11 @@ class ACPBackend(BackendBase):
             "blocked_on_memory_entries",
             "blocked_on_memory_wakeups",
             "blocked_on_memory_duplicate_wakeups_avoided",
+            "application_pause_entries",
+            "application_pause_rejections",
+            "application_pause_wakeups",
+            "background_rules_quiesced_for_application",
+            "background_emissions_during_application",
             "reservation_schedule_attempts",
             "reservation_schedule_successes",
             "reservation_schedule_failures",

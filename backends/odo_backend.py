@@ -27,6 +27,7 @@ from backends.base import BackendBase
 from backends.collectors import collect_qpq_results
 from results import BackendResult, RequestResult
 from qpq_app import QPQApp
+from demand_diagnostics import ApplicationDemandDiagnostics
 
 
 class ODOBackend(BackendBase):
@@ -65,6 +66,16 @@ class ODOBackend(BackendBase):
             app = QPQApp(router)
             name_to_app[router.name] = app
 
+        demand_diagnostics = None
+        diagnostics_config = config.get("diagnostics", {})
+        if diagnostics_config.get("application_demand", False):
+            demand_diagnostics = ApplicationDemandDiagnostics(
+                network_topo, query_specs, self.name, self.adaptive_max_memory
+            )
+            demand_diagnostics.install(
+                network_topo.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER)
+            )
+
         for spec in query_specs:
             src_name = spec["src"]
             if src_name not in name_to_app:
@@ -87,6 +98,8 @@ class ODOBackend(BackendBase):
             app.finalize_unfinished_queries(tl.now())
 
         result = collect_qpq_results(name_to_app, config, self.name)
+        if demand_diagnostics is not None:
+            demand_diagnostics.write(diagnostics_config["application_demand_output"])
         self._print_diagnostic_counters(tl, result)
         return result
 

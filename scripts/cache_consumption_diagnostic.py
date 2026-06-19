@@ -244,6 +244,35 @@ def main() -> None:
         mismatch_force,
     ))
 
+    full_budget_topo = generate_linear_topology(
+        num_nodes=3,
+        inter_node_distance_m=100.0,
+        memo_size=4,
+        adaptive_max_memory=4,
+        memory_fidelity=0.99,
+        memory_efficiency=1.0,
+        coherence_time_s=100.0,
+        stop_time_s=8.0,
+        seed=7,
+        extra_mesh_edges=0,
+        qdc_node_index=2,
+        encoding_type="single_heralded",
+        formalism="bell_diagonal",
+    )
+    full_budget_force = {
+        "router_0": {"router_1": 1.0, "": 0.0},
+        "router_1": {"router_0": 1.0, "": 0.0},
+        "router_2": {"": 1.0},
+    }
+    summaries.append(run_case(
+        "application_under_full_acp_budget",
+        outdir,
+        full_budget_topo,
+        query("router_1", "router_2", start_s=1.5),
+        ACPBackend(adaptive_max_memory=4, name_override="acp_m4"),
+        full_budget_force,
+    ))
+
     swap_topo_all_cached = generate_linear_topology(
         num_nodes=3,
         inter_node_distance_m=100.0,
@@ -358,6 +387,23 @@ def main() -> None:
             by_name["mixed_cached_fresh"]["delivered_pairs_with_background_contribution"] > 0
             and by_name["mixed_cached_fresh"]["delivered_pairs_fully_fresh"] > 0
         ),
+        "partial_cache_starts_remaining_fresh_generation": (
+            by_name["mixed_cached_fresh"]["counters"]["background_pairs_consumed_by_app"] > 0
+            and by_name["mixed_cached_fresh"]["counters"]["fresh_app_pairs_generated"] > 0
+        ),
+        "application_generation_wakes_after_cached_memory_release": (
+            by_name["mixed_cached_fresh"]["counters"]["background_pairs_consumed_by_app"] > 0
+            and by_name["mixed_cached_fresh"]["counters"]["fresh_app_pairs_generated"] > 0
+        ),
+        "application_progresses_under_full_acp_budget": (
+            by_name["application_under_full_acp_budget"]["success"]
+            and by_name["application_under_full_acp_budget"]["counters"]["fresh_app_pairs_generated"] > 0
+        ),
+        "background_resumes_after_application_release": (
+            by_name["application_under_full_acp_budget"]["counters"].get(
+                "application_pause_wakeups", 0
+            ) > 0
+        ),
         "mismatched_inventory_not_useful": (
             by_name["mismatched_demand"]["max_pregenerated_pair_records_at_request_start"] > 0
             and by_name["mismatched_demand"]["max_useful_pair_records_at_request_start"] == 0
@@ -396,6 +442,10 @@ def main() -> None:
         "m6_uses_more_adaptive_memory_than_m1": (
             by_name["budget_m6"]["max_adaptive_memory_used_at_snapshot"]
             > by_name["budget_m1"]["max_adaptive_memory_used_at_snapshot"]
+        ),
+        "m1_and_m6_both_preserve_application_progress": (
+            by_name["budget_m1"]["success"]
+            and by_name["budget_m6"]["success"]
         ),
     }
     output = {

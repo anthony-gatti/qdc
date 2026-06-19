@@ -90,6 +90,13 @@ def run_one_cell(
             diag_dir,
             f"cache_d{int(distance_km)}_n{num_nodes}_nb{database_size_log}_s{seed}_{backend_name}.json",
         )
+    if config.get("diagnostics", {}).get("application_demand", False):
+        diag_dir = os.path.join(output_dir, "application_demand")
+        os.makedirs(diag_dir, exist_ok=True)
+        config.setdefault("diagnostics", {})["application_demand_output"] = os.path.join(
+            diag_dir,
+            f"demand_d{int(distance_km)}_n{num_nodes}_nb{database_size_log}_s{seed}_{backend_name}.json",
+        )
 
     hw = config.get("hardware", {})
     exp = config.get("experiment", {})
@@ -483,6 +490,11 @@ def main():
         action="store_true",
         help="Write per-cell ACP cache lifecycle diagnostics under the output directory.",
     )
+    parser.add_argument(
+        "--demand-diagnostics",
+        action="store_true",
+        help="Write per-reservation application demand diagnostics under the output directory.",
+    )
     parser.add_argument("--num-nodes", type=int, default=25,
                         help="Nodes for primary sweep (default: 25, gives hops 1-7)")
     parser.add_argument("--seeds", type=int, default=15,
@@ -497,6 +509,8 @@ def main():
     base_config.setdefault("workload", {})["mode"] = "qpq"
     if args.cache_diagnostics:
         base_config.setdefault("diagnostics", {})["cache_lifecycle"] = True
+    if args.demand_diagnostics:
+        base_config.setdefault("diagnostics", {})["application_demand"] = True
 
     exp_cfg = base_config.get("experiment", {})
     if args.backends:
