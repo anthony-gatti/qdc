@@ -8,10 +8,13 @@ CSV output.
 from __future__ import annotations
 
 import json
+import hashlib
 from collections import defaultdict
 from types import MethodType
 
 from sequence.entanglement_management.generation import EntanglementGenerationA
+from sequence.entanglement_management.generation.single_heralded import SingleHeraldedA
+from sequence.components.bsm import SingleHeraldedBSM
 from sequence.kernel.event import Event
 from sequence.kernel.process import Process
 from sequence.resource_management.memory_manager import MemoryInfo
@@ -31,10 +34,81 @@ def edge_key(a: str, b: str) -> tuple[str, str]:
     return tuple(sorted((a, b)))
 
 
+_PROTOCOL_CLASS_INSTRUMENTED = False
+
+
+def _install_protocol_class_instrumentation() -> None:
+    """Install allocation-free wrappers once for official application EG."""
+    global _PROTOCOL_CLASS_INSTRUMENTED
+    if _PROTOCOL_CLASS_INSTRUMENTED:
+        return
+    _PROTOCOL_CLASS_INSTRUMENTED = True
+    original_start = SingleHeraldedA.start
+    original_received = SingleHeraldedA.received_message
+    original_emit = SingleHeraldedA.emit_event
+
+    def diagnostic(protocol):
+        return getattr(getattr(protocol, "owner", None), "qdc_demand_diagnostics", None)
+
+    def start(protocol):
+        collector = diagnostic(protocol)
+        edge = collector._edge_for_protocol(protocol) if collector else None
+        before = len(protocol.scheduled_events)
+        if edge is not None:
+            edge["protocol_start_calls"] += 1
+        result = original_start(protocol)
+        if edge is not None and len(protocol.scheduled_events) > before:
+            edge["starts_that_schedule_an_emission"] += 1
+        return result
+
+    def received_message(protocol, src, msg):
+        collector = diagnostic(protocol)
+        edge = collector._edge_for_protocol(protocol) if collector else None
+        before = len(protocol.scheduled_events)
+        result = original_received(protocol, src, msg)
+        if edge is not None:
+            scheduled = protocol.scheduled_events[before:]
+            if any(event.process.activation == "emit_event" for event in scheduled):
+                edge["protocol_callbacks_that_schedule_emission"] += 1
+        return result
+
+    def emit_event(protocol):
+        collector = diagnostic(protocol)
+        edge = collector._edge_for_protocol(protocol) if collector else None
+        memory = protocol.memory
+        previous = memory.excited_photon
+        result = original_emit(protocol)
+        photon = memory.excited_photon
+        if edge is not None and photon is not None and photon is not previous:
+            reservation = getattr(getattr(protocol, "rule", None), "reservation", None)
+            photon.qdc_generation_marker = {
+                "source": "application",
+                "reservation_key": list(reservation_key(reservation)),
+                "edge": list(edge_key(protocol.owner.name, protocol.remote_node_name)),
+                "node": protocol.owner.name,
+                "protocol": protocol.name,
+                "round": protocol.ent_round,
+            }
+            edge["endpoint_emissions"] += 1
+        return result
+
+    SingleHeraldedA.start = start
+    SingleHeraldedA.received_message = received_message
+    SingleHeraldedA.emit_event = emit_event
+
+
 class ApplicationDemandDiagnostics:
     """Collect comparable application demand and generation metrics."""
 
-    def __init__(self, network_topo, query_specs: list[dict], backend: str, memory_budget: int):
+    def __init__(
+        self,
+        network_topo,
+        query_specs: list[dict],
+        backend: str,
+        memory_budget: int,
+        topo_json_path: str | None = None,
+        include_events: bool = True,
+    ):
         self.topology = network_topo
         self.timeline = network_topo.get_timeline()
         self.query_specs = {spec["query_id"]: spec for spec in query_specs}
@@ -43,15 +117,22 @@ class ApplicationDemandDiagnostics:
         self.reservations = {}
         self.events = []
         self.memory_snapshots = []
+        self.physical_snapshots = []
+        self._physical_config = self._physical_config_fingerprint(topo_json_path)
+        self.include_events = include_events
         self._installed = False
 
     def install(self, routers: list) -> None:
         if self._installed:
             return
         self._installed = True
+        _install_protocol_class_instrumentation()
         for router in routers:
             router.qdc_demand_diagnostics = self
             self._wrap_resource_manager(router)
+        for bsm_node in self.topology.get_nodes_by_type("BSMNode"):
+            for component in bsm_node.get_components_by_type(SingleHeraldedBSM):
+                self._wrap_bsm(component)
 
     def _wrap_resource_manager(self, router) -> None:
         manager = router.resource_manager
@@ -69,6 +150,7 @@ class ApplicationDemandDiagnostics:
             return original_load(rule)
 
         def send_request(_manager, protocol, req_dst, req_condition_func, req_args):
+            self._instrument_protocol(protocol, router)
             self.record_protocol_requested(router, protocol, req_dst)
             return original_send(protocol, req_dst, req_condition_func, req_args)
 
@@ -80,6 +162,70 @@ class ApplicationDemandDiagnostics:
         manager.load = MethodType(load, manager)
         manager.send_request = MethodType(send_request, manager)
         manager.update = MethodType(update, manager)
+
+    @staticmethod
+    def _stable_hash(value) -> str:
+        payload = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+        return hashlib.sha256(payload.encode()).hexdigest()
+
+    def _physical_config_fingerprint(self, topo_json_path: str | None) -> dict:
+        if topo_json_path is None:
+            return {}
+        with open(topo_json_path) as source:
+            topology = json.load(source)
+        physical = json.loads(json.dumps(topology))
+        for template in physical.get("templates", {}).values():
+            template.pop("adaptive_max_memory", None)
+        return {"sha256": self._stable_hash(physical), "config": physical}
+
+    def _instrument_protocol(self, protocol, router) -> None:
+        if not isinstance(protocol, EntanglementGenerationA) or getattr(protocol, "_qdc_instrumented", False):
+            return
+        protocol._qdc_instrumented = True
+        reservation = getattr(getattr(protocol, "rule", None), "reservation", None)
+        edge_record = self._edge_record(
+            reservation, (router.name, protocol.remote_node_name)
+        )
+        if edge_record is None:
+            return
+        edge_record["unique_protocol_instances"] += 1
+
+    def _edge_for_protocol(self, protocol) -> dict | None:
+        reservation = getattr(getattr(protocol, "rule", None), "reservation", None)
+        return self._edge_record(
+            reservation, (protocol.owner.name, protocol.remote_node_name)
+        )
+
+    def _wrap_bsm(self, bsm) -> None:
+        original_get = bsm.get
+
+        def get(_bsm, photon, **kwargs):
+            now = _bsm.timeline.now()
+            prior = None
+            if _bsm.photon_arrival_time == now:
+                prior = next(
+                    (candidate for candidate in _bsm.photons if candidate.location != photon.location),
+                    None,
+                )
+            result = original_get(photon, **kwargs)
+            if prior is None:
+                return result
+            markers = [
+                getattr(prior, "qdc_generation_marker", None),
+                getattr(photon, "qdc_generation_marker", None),
+            ]
+            if not all(marker and marker.get("source") == "application" for marker in markers):
+                return result
+            first = markers[0]
+            record = self.reservations.get(tuple(first["reservation_key"]))
+            if record is None:
+                return result
+            edge_record = record["edges"].get("|".join(first["edge"]))
+            if edge_record is not None:
+                edge_record["bsm_attempts"] += 1
+            return result
+
+        bsm.get = MethodType(get, bsm)
 
     def _record_for(self, reservation) -> dict | None:
         if reservation is None or reservation.__class__.__name__ == "ReservationAdaptive":
@@ -117,6 +263,16 @@ class ApplicationDemandDiagnostics:
                     "fresh_generation_rules_installed": 0,
                     "fresh_generation_protocol_started": 0,
                     "fresh_generation_protocol_started_by_deadline": 0,
+                    "protocol_request_objects": 0,
+                    "unique_protocol_instances": 0,
+                    "protocol_start_calls": 0,
+                    "starts_that_schedule_an_emission": 0,
+                    "protocol_callbacks_that_schedule_emission": 0,
+                    "endpoint_emissions": 0,
+                    "bsm_attempts": 0,
+                    "completed_physical_attempts": 0,
+                    "endpoint_success_updates": 0,
+                    "successful_physical_pairs": 0,
                     "fresh_generation_succeeded": 0,
                     "fresh_generation_succeeded_by_deadline": 0,
                     "fresh_generation_cancelled_or_expired": 0,
@@ -178,27 +334,38 @@ class ApplicationDemandDiagnostics:
         edge_record = self._edge_record(reservation, (router.name, protocol.remote_node_name))
         if edge_record is None:
             return
+        edge_record["protocol_request_objects"] += 1
+        # Deprecated schema-v1 compatibility alias.  This never counted start().
         edge_record["fresh_generation_protocol_started"] += 1
-        self.events.append({
-            "event": "fresh_generation_protocol_started",
-            "time_ps": self.timeline.now(),
-            "backend": self.backend,
-            "query_id": reservation.identity,
-            "round": self._record_for(reservation)["round"],
-            "edge": list(edge_key(router.name, protocol.remote_node_name)),
-            "node": router.name,
-        })
+        if self.include_events:
+            self.events.append({
+                "event": "fresh_generation_protocol_requested",
+                "time_ps": self.timeline.now(),
+                "backend": self.backend,
+                "query_id": reservation.identity,
+                "round": self._record_for(reservation)["round"],
+                "edge": list(edge_key(router.name, protocol.remote_node_name)),
+                "node": router.name,
+            })
 
     def record_protocol_update(self, router, protocol, state) -> None:
         if protocol is None or not isinstance(protocol, EntanglementGenerationA):
             return
         reservation = getattr(getattr(protocol, "rule", None), "reservation", None)
         remote = getattr(protocol, "remote_node_name", None)
-        if remote is None or router.name > remote:
+        if remote is None:
             return
         edge_record = self._edge_record(reservation, (router.name, remote))
-        if edge_record is not None and state == MemoryInfo.ENTANGLED:
-            edge_record["fresh_generation_succeeded"] += 1
+        if edge_record is None:
+            return
+        if state == MemoryInfo.ENTANGLED:
+            edge_record["endpoint_success_updates"] += 1
+            if router.name < remote:
+                edge_record["completed_physical_attempts"] += 1
+                edge_record["successful_physical_pairs"] += 1
+                edge_record["fresh_generation_succeeded"] += 1
+        elif router.name < remote:
+            edge_record["completed_physical_attempts"] += 1
 
     def snapshot_start(self, key: tuple) -> None:
         record = self.reservations.get(key)
@@ -256,6 +423,49 @@ class ApplicationDemandDiagnostics:
                 "time_ps": self.timeline.now(),
                 "node": node_name,
                 **dict(counts),
+            })
+        self._snapshot_physical_state(record)
+
+    def _snapshot_physical_state(self, record: dict) -> None:
+        pending = [event for event in self.timeline.events if not event.is_invalid()]
+        for edge in record["edges"].values():
+            left, right = edge["edge"]
+            left_node = self.timeline.get_entity_by_name(left)
+            middle_name = left_node.map_to_middle_node[right]
+            middle = self.timeline.get_entity_by_name(middle_name)
+            bsm = middle.components[middle.first_component_name]
+            path_nodes = {left, right, middle_name}
+            relevant_events = [
+                event for event in pending
+                if getattr(getattr(event.process, "owner", None), "name", None) in path_nodes
+                or getattr(getattr(getattr(event.process, "owner", None), "owner", None), "name", None) in path_nodes
+            ]
+            self.physical_snapshots.append({
+                "backend": self.backend,
+                "acp_memory_budget": self.memory_budget,
+                "query_id": record["query_id"],
+                "round": record["round"],
+                "time_ps": self.timeline.now(),
+                "edge": edge["edge"],
+                "middle": middle_name,
+                "bsm_photons_buffered": len(bsm.photons),
+                "bsm_photon_arrival_time_ps": bsm.photon_arrival_time,
+                "detector_next_detection_time_ps": [detector.next_detection_time for detector in bsm.detectors],
+                "detector_photon_counters": [detector.photon_counter for detector in bsm.detectors],
+                "pending_path_events": len(relevant_events),
+                "pending_emit_events": sum(
+                    event.process.activation == "emit_event" for event in relevant_events
+                ),
+                "pending_protocol_start_events": sum(
+                    event.process.activation == "start" for event in relevant_events
+                ),
+                "endpoint_next_excite_time_ps": {
+                    node_name: [
+                        info.memory.next_excite_time
+                        for info in self.timeline.get_entity_by_name(node_name).resource_manager.memory_manager
+                    ]
+                    for node_name in (left, right)
+                },
             })
 
     def snapshot_deadline(self, key: tuple) -> None:
@@ -317,6 +527,16 @@ class ApplicationDemandDiagnostics:
                     "fresh_generation_rules_installed",
                     "fresh_generation_protocol_started",
                     "fresh_generation_protocol_started_by_deadline",
+                    "protocol_request_objects",
+                    "unique_protocol_instances",
+                    "protocol_start_calls",
+                    "starts_that_schedule_an_emission",
+                    "protocol_callbacks_that_schedule_emission",
+                    "endpoint_emissions",
+                    "bsm_attempts",
+                    "completed_physical_attempts",
+                    "endpoint_success_updates",
+                    "successful_physical_pairs",
                     "fresh_generation_succeeded",
                     "fresh_generation_succeeded_by_deadline",
                     "fresh_generation_cancelled_or_expired",
@@ -326,14 +546,52 @@ class ApplicationDemandDiagnostics:
                 for reason, count in edge["blocking_reasons"].items():
                     reason_totals[reason] += count
         return {
-            "schema_version": "1",
+            "schema_version": "2",
             "backend": self.backend,
             "acp_memory_budget": self.memory_budget,
             "totals": dict(totals),
             "blocking_reasons": dict(reason_totals),
             "reservations": list(self.reservations.values()),
             "memory_snapshots": self.memory_snapshots,
+            "physical_snapshots": self.physical_snapshots,
             "events": self.events,
+            "metric_definitions": {
+                "fresh_generation_protocol_started": "deprecated alias for protocol_request_objects",
+                "protocol_request_objects": "request-side protocol objects passed to ResourceManager.send_request",
+                "unique_protocol_instances": "endpoint protocol objects (normally two per physical attempt)",
+                "protocol_start_calls": "actual protocol start() callbacks, including both endpoints and both rounds",
+                "starts_that_schedule_an_emission": "emission events scheduled synchronously inside start()",
+                "protocol_callbacks_that_schedule_emission": "message callbacks that schedule an emit_event",
+                "endpoint_emissions": "photons emitted by application protocol endpoints",
+                "bsm_attempts": "coincident two-photon application windows presented to a BSM",
+                "completed_physical_attempts": "request-side two-round protocols ending in RAW",
+                "endpoint_success_updates": "endpoint memory ENTANGLED updates (two per physical pair)",
+                "successful_physical_pairs": "elementary pairs, deduplicated across endpoint updates",
+                "fresh_generation_succeeded": "compatibility alias for successful_physical_pairs",
+            },
+            "input_fingerprints": self.input_fingerprints(),
+        }
+
+    def input_fingerprints(self) -> dict:
+        workload = sorted(self.query_specs.values(), key=lambda item: item["query_id"])
+        actual_paths = sorted(
+            (
+                reservation["query_id"],
+                reservation["round"],
+                reservation["start_time_ps"],
+                reservation["path"],
+            )
+            for reservation in self.reservations.values()
+        )
+        round1_paths = [path for path in actual_paths if path[1] == 1]
+        return {
+            "workload_sha256": self._stable_hash(workload),
+            "initial_application_paths_sha256": self._stable_hash(actual_paths),
+            "round1_application_paths_sha256": self._stable_hash(round1_paths),
+            "physical_config_sha256": self._physical_config.get("sha256", ""),
+            "workload": workload,
+            "initial_application_paths": actual_paths,
+            "round1_application_paths": round1_paths,
         }
 
     def write(self, path: str) -> None:

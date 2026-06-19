@@ -4,3 +4,4 @@ external/
 backends/__pycache__/
 *.log
 docs/*.txt
+diagnostics/

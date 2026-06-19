@@ -132,6 +132,11 @@ class CacheLifecycleDiagnostics:
             tuple(sorted(((pair["pair"][0][0], pair["pair"][0][1]), (pair["pair"][1][0], pair["pair"][1][1]))))
             for pair in pairs
         }
+        useful_unique_pairs = {
+            tuple(sorted(((pair["pair"][0][0], pair["pair"][0][1]), (pair["pair"][1][0], pair["pair"][1][1]))))
+            for pair in pairs
+            if pair["useful_for_workload"]
+        }
         self.snapshots.append({
             "time_ps": label_time_ps,
             "time_ms": label_time_ps / MILLISECOND,
@@ -139,6 +144,7 @@ class CacheLifecycleDiagnostics:
             "local_pair_records": local_records,
             "unique_pair_records": len(unique_pairs),
             "useful_local_pair_records": useful_records,
+            "useful_unique_pair_records": len(useful_unique_pairs),
             "pair_age_ms_min": min(ages_ms) if ages_ms else None,
             "pair_age_ms_max": max(ages_ms) if ages_ms else None,
             "adaptive_memory_by_node": adaptive_memory_by_node,
@@ -193,11 +199,50 @@ class CacheLifecycleDiagnostics:
                     counters["cleanup_app_owned_memories"] += 1
                 if getattr(memory, "qdc_claimed_by_reservation", ""):
                     counters["cleanup_claimed_memories"] += 1
+        generated_pairs = {
+            (
+                event.get("time_ps"),
+                tuple(sorted(tuple(endpoint) for endpoint in event.get("pair", ()))),
+            )
+            for event in lifecycle_events
+            if event.get("event") == "background_pair_available"
+        }
+        adopted_pairs = {
+            (
+                event.get("time_ps"),
+                tuple(sorted(tuple(endpoint) for endpoint in event.get("app_pair", ()))),
+                event.get("app_reservation", ""),
+            )
+            for event in lifecycle_events
+            if event.get("event") == "background_pair_adopted_by_application"
+        }
+        counters["background_physical_pairs_generated"] = len(generated_pairs)
+        counters["background_physical_pairs_adopted"] = len(adopted_pairs)
+        counters["background_generation_endpoint_updates"] = counters.get(
+            "background_generation_successes", 0
+        )
+        counters["background_inventory_endpoint_records_created"] = counters.get(
+            "generation_successes", 0
+        )
+        counters["fresh_application_endpoint_updates"] = counters.get(
+            "fresh_app_pairs_generated", 0
+        )
         return {
             "counters": dict(counters),
             "snapshots": self.snapshots,
             "lifecycle_events": lifecycle_events,
             "max_adaptive_memory_by_node": dict(max_adaptive_memory_by_node),
+            "metric_definitions": {
+                "background_physical_pairs_generated": "deduplicated elementary pairs; canonical background generation count",
+                "background_generation_endpoint_updates": "endpoint success callbacks; normally two per physical pair",
+                "background_inventory_endpoint_records_created": "local cache records; normally two per physical pair",
+                "background_physical_pairs_adopted": "deduplicated elementary pairs atomically transferred to applications",
+                "background_pairs_consumed_by_app": "initiator-side adoption records; retained compatibility field",
+                "fresh_application_endpoint_updates": "endpoint ENTANGLED updates; normally two per fresh elementary pair",
+                "fresh_app_pairs_generated": "deprecated ambiguous alias for fresh_application_endpoint_updates",
+                "useful_local_pair_records": "endpoint cache records on workload path edges at a snapshot",
+                "unique_pair_records": "deduplicated physical cache pairs at a snapshot",
+            },
         }
 
 
@@ -213,6 +258,7 @@ class ACPBackend(BackendBase):
         adaptive_max_memory: int = 8,
         update_prob: bool = True,
         background_enabled: bool = True,
+        application_priority: bool = True,
         name_override: Optional[str] = None,
     ):
         """
@@ -229,6 +275,7 @@ class ACPBackend(BackendBase):
         self._adaptive_max_memory = adaptive_max_memory
         self._update_prob = update_prob
         self._background_enabled = background_enabled
+        self._application_priority = application_priority
         self._name_override = name_override
 
     @property
@@ -280,6 +327,7 @@ class ACPBackend(BackendBase):
             router.adaptive_continuous.update_prob = self._update_prob
             router.adaptive_continuous.print_prob_table = False
             router.adaptive_continuous.background_enabled = self._background_enabled
+            router.adaptive_continuous.application_priority = self._application_priority
             forced_tables = config.get("diagnostics", {}).get("force_probability_table", {})
             if router.name in forced_tables:
                 router.adaptive_continuous.forced_probability_table = forced_tables[router.name]
@@ -321,6 +369,7 @@ class ACPBackend(BackendBase):
             router.adaptive_continuous.update_prob = self._update_prob
             router.adaptive_continuous.print_prob_table = False
             router.adaptive_continuous.background_enabled = self._background_enabled
+            router.adaptive_continuous.application_priority = self._application_priority
             forced_tables = config.get("diagnostics", {}).get("force_probability_table", {})
             if router.name in forced_tables:
                 router.adaptive_continuous.forced_probability_table = forced_tables[router.name]
@@ -331,7 +380,12 @@ class ACPBackend(BackendBase):
         diag_cfg = config.get("diagnostics", {})
         if diag_cfg.get("application_demand", False):
             demand_diagnostics = ApplicationDemandDiagnostics(
-                network_topo, query_specs, self.name, self.adaptive_max_memory
+                network_topo,
+                query_specs,
+                self.name,
+                self.adaptive_max_memory,
+                topo_json_path,
+                diag_cfg.get("application_demand_events", True),
             )
             demand_diagnostics.install(
                 network_topo.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER)

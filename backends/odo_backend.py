@@ -70,7 +70,12 @@ class ODOBackend(BackendBase):
         diagnostics_config = config.get("diagnostics", {})
         if diagnostics_config.get("application_demand", False):
             demand_diagnostics = ApplicationDemandDiagnostics(
-                network_topo, query_specs, self.name, self.adaptive_max_memory
+                network_topo,
+                query_specs,
+                self.name,
+                self.adaptive_max_memory,
+                topo_json_path,
+                diagnostics_config.get("application_demand_events", True),
             )
             demand_diagnostics.install(
                 network_topo.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER)

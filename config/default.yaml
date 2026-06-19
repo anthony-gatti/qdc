@@ -11,6 +11,12 @@ hardware:
   gate_fidelity: 0.99
   measurement_fidelity: 0.99
 
+acp:
+  # Current evaluation variant: speculative ACP yields to active applications.
+  # Set false, or use an acp_mN_continuous backend alias, for historical-style
+  # continuous background operation. The variants must not be conflated.
+  application_priority: true
+
 workload:
   mode: "qpq"
   database_size_log: 10
