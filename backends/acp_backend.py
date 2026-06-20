@@ -259,6 +259,7 @@ class ACPBackend(BackendBase):
         update_prob: bool = True,
         background_enabled: bool = True,
         application_priority: bool = True,
+        cache_strategy: str = "freshest",
         name_override: Optional[str] = None,
     ):
         """
@@ -276,6 +277,9 @@ class ACPBackend(BackendBase):
         self._update_prob = update_prob
         self._background_enabled = background_enabled
         self._application_priority = application_priority
+        if cache_strategy not in {"freshest", "random"}:
+            raise ValueError(f"Unsupported ACP cache strategy: {cache_strategy}")
+        self._cache_strategy = cache_strategy
         self._name_override = name_override
 
     @property
@@ -328,6 +332,10 @@ class ACPBackend(BackendBase):
             router.adaptive_continuous.print_prob_table = False
             router.adaptive_continuous.background_enabled = self._background_enabled
             router.adaptive_continuous.application_priority = self._application_priority
+            router.adaptive_continuous.strategy = self._cache_strategy
+            update_period_s = config.get("acp", {}).get("update_period_s")
+            if update_period_s is not None:
+                router.adaptive_continuous.update_period(round(update_period_s * 10**12))
             forced_tables = config.get("diagnostics", {}).get("force_probability_table", {})
             if router.name in forced_tables:
                 router.adaptive_continuous.forced_probability_table = forced_tables[router.name]
@@ -347,7 +355,9 @@ class ACPBackend(BackendBase):
         tl.init()
         tl.run()
 
-        return self._collect_pair_results(name_to_app, config)
+        from pair_app import collect_pair_results
+        seed = config.get("topology", {}).get("random_seed", 0)
+        return collect_pair_results(name_to_app, request_queue, self.name, seed)
 
     def _run_qpq(
         self,

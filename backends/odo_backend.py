@@ -27,6 +27,7 @@ from backends.base import BackendBase
 from backends.collectors import collect_qpq_results
 from results import BackendResult, RequestResult
 from qpq_app import QPQApp
+from pair_app import PairRequestApp, collect_pair_results
 from demand_diagnostics import ApplicationDemandDiagnostics
 
 
@@ -41,9 +42,29 @@ class ODOBackend(BackendBase):
 
     def run(self, topo_json_path: str, request_queue: list, config: dict) -> BackendResult:
         mode = config.get("workload", {}).get("mode", "qpq")
-        if mode != "qpq":
-            raise NotImplementedError("ODOBackend spike currently supports only QPQ mode.")
+        if mode == "pair":
+            return self._run_pair(topo_json_path, request_queue, config)
         return self._run_qpq(topo_json_path, request_queue, config)
+
+    def _run_pair(self, topo_json_path, requests, config):
+        QuantumManager.set_global_manager_formalism(BELL_DIAGONAL_STATE_FORMALISM)
+        BBPSSWProtocol.set_formalism(BELL_DIAGONAL_STATE_FORMALISM)
+        EntanglementSwappingA.set_formalism(BELL_DIAGONAL_STATE_FORMALISM)
+        EntanglementSwappingB.set_formalism(BELL_DIAGONAL_STATE_FORMALISM)
+        EntanglementGenerationA.set_global_type("single_heralded")
+        EntanglementGenerationB.set_global_type("single_heralded")
+        topology = RouterNetTopo(topo_json_path)
+        apps = {
+            router.name: PairRequestApp(router)
+            for router in topology.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER)
+        }
+        for request in requests:
+            identity, src, dst, start, end, memory, fidelity, pairs = request
+            apps[src].start(dst, start, end, memory, fidelity, pairs, identity)
+        topology.get_timeline().init()
+        topology.get_timeline().run()
+        seed = config.get("topology", {}).get("random_seed", 0)
+        return collect_pair_results(apps, requests, self.name, seed)
 
     def _run_qpq(self, topo_json_path: str, query_specs: list, config: dict) -> BackendResult:
         # Use SeQUeNCe's Bell-diagonal + single-heralded stack.
