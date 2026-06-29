@@ -41,10 +41,22 @@ class PairRequestApp(RequestApp):
             self.time_to_serve[reservation] = (
                 self.node.timeline.now() - reservation.start_time
             )
+            self._record_successful_path(reservation)
 
         self.node.resource_manager.update(None, info.memory, MemoryInfo.RAW)
         if len(self.entanglement_fidelities.get(reservation, ())) >= reservation.entanglement_number:
             self.node.resource_manager.expire_rules_by_reservation(reservation)
+
+    def _record_successful_path(self, reservation) -> None:
+        path = getattr(reservation, "path", [])
+        if not path:
+            return
+        timestamp = self.node.timeline.now()
+        for node_name in path:
+            node = self.node.timeline.get_entity_by_name(node_name)
+            acp = getattr(node, "adaptive_continuous", None)
+            if acp is not None:
+                acp.record_served_path(path, timestamp)
 
 
 def collect_pair_results(name_to_app, requests, backend_name, seed):

@@ -9,22 +9,20 @@ def get_backend(name: str, config: dict):
         return ODOBackend()
 
     if name == "acp":
-        from backends.acp_backend import ACPBackend
+        from backends.clean_backend import CleanAlgorithmBackend
 
-        return ACPBackend(
+        return CleanAlgorithmBackend(
+            algorithm_name="acp_freshest",
             adaptive_max_memory=hw.get("acp_memory", 8),
-            update_prob=True,
-            application_priority=default_application_priority,
         )
 
     if name.startswith("acp_m") and name[5:].isdigit():
-        from backends.acp_backend import ACPBackend
+        from backends.clean_backend import CleanAlgorithmBackend
 
         memory_budget = int(name[5:])
-        return ACPBackend(
+        return CleanAlgorithmBackend(
+            algorithm_name="acp_freshest",
             adaptive_max_memory=memory_budget,
-            update_prob=True,
-            application_priority=default_application_priority,
             name_override=f"acp_m{memory_budget}",
         )
 
