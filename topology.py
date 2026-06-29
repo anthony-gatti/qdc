@@ -20,6 +20,22 @@ import numpy as np
 SECOND = int(1e12)
 MILLISECOND = int(1e9)
 SPEED_OF_LIGHT = 2e-4  #km per picosecond in fiber
+CLASSICAL_TIMING_SEQUENCE = "sequence"
+CLASSICAL_TIMING_ACP_PAPER = "acp_paper"
+ACP_PAPER_END_NODE_PROCESSING_DELAY_PS = 100_000_000
+
+
+def classical_delay_ps(
+    propagation_delay_ps: float,
+    classical_timing_profile: str = CLASSICAL_TIMING_SEQUENCE,
+    end_node_processing_delay_ps: int = ACP_PAPER_END_NODE_PROCESSING_DELAY_PS,
+) -> float:
+    """Return modeled one-way classical-channel delay in picoseconds."""
+    if classical_timing_profile == CLASSICAL_TIMING_SEQUENCE:
+        return propagation_delay_ps
+    if classical_timing_profile == CLASSICAL_TIMING_ACP_PAPER:
+        return propagation_delay_ps + end_node_processing_delay_ps
+    raise ValueError(f"Unsupported classical timing profile: {classical_timing_profile}")
 
 def generate_hub_spoke_topology(
     num_nodes: int,
@@ -32,6 +48,8 @@ def generate_hub_spoke_topology(
     gate_fidelity: float = 0.99,
     measurement_fidelity: float = 0.99,
     attenuation: float = 0.0002,
+    classical_timing_profile: str = CLASSICAL_TIMING_SEQUENCE,
+    end_node_processing_delay_ps: int = ACP_PAPER_END_NODE_PROCESSING_DELAY_PS,
     stop_time_s: float = 60.0,
     seed: int = 42,
     extra_mesh_edges: int = 0,
@@ -141,7 +159,11 @@ def generate_hub_spoke_topology(
     for u, v in graph.edges():
         a, b = min(u, v), max(u, v)
         bsm_name = f"BSM_{a}_{b}"
-        cc_delay = half_distance / SPEED_OF_LIGHT  # propagation delay
+        cc_delay = classical_delay_ps(
+            half_distance / SPEED_OF_LIGHT,
+            classical_timing_profile,
+            end_node_processing_delay_ps,
+        )
 
         for router_idx in [a, b]:
             rname = router_names[router_idx]
@@ -166,7 +188,11 @@ def generate_hub_spoke_topology(
 
     for i, j in itertools.permutations(range(num_nodes), 2):
         dist = shortest_paths[i].get(j, num_nodes * inter_node_distance_m)
-        delay = dist / SPEED_OF_LIGHT
+        delay = classical_delay_ps(
+            dist / SPEED_OF_LIGHT,
+            classical_timing_profile,
+            end_node_processing_delay_ps,
+        )
         cchannels.append({
             "source": router_names[i],
             "destination": router_names[j],
@@ -179,6 +205,12 @@ def generate_hub_spoke_topology(
     config = {
         "formalism": formalism,
         "encoding_type": encoding_type,
+        "classical_timing_profile": classical_timing_profile,
+        "end_node_processing_delay_ps": (
+            end_node_processing_delay_ps
+            if classical_timing_profile == CLASSICAL_TIMING_ACP_PAPER
+            else 0
+        ),
         "templates": {
             "default_template": template,
         },
@@ -304,7 +336,13 @@ def generate_linear_topology(
 
     # Classical channels: full mesh + router to BSMs
     cchannels = []
-    cc_delay = half_distance / SPEED_OF_LIGHT
+    classical_timing_profile = kwargs.get("classical_timing_profile", CLASSICAL_TIMING_SEQUENCE)
+    end_node_processing_delay_ps = kwargs.get("end_node_processing_delay_ps", ACP_PAPER_END_NODE_PROCESSING_DELAY_PS)
+    cc_delay = classical_delay_ps(
+        half_distance / SPEED_OF_LIGHT,
+        classical_timing_profile,
+        end_node_processing_delay_ps,
+    )
 
     for i in range(num_nodes - 1):
         bsm_name = f"BSM_{i}_{i+1}"
@@ -316,7 +354,11 @@ def generate_linear_topology(
     # Full router mesh
     for i, j in itertools.permutations(range(num_nodes), 2):
         hop_dist = abs(i - j) * inter_node_distance_m
-        delay = hop_dist / SPEED_OF_LIGHT
+        delay = classical_delay_ps(
+            hop_dist / SPEED_OF_LIGHT,
+            classical_timing_profile,
+            end_node_processing_delay_ps,
+        )
         cchannels.append({
             "source": router_names[i],
             "destination": router_names[j],

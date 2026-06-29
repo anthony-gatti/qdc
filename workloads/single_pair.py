@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from topology import generate_linear_topology
+from topology import (
+    ACP_PAPER_END_NODE_PROCESSING_DELAY_PS,
+    CLASSICAL_TIMING_ACP_PAPER,
+    CLASSICAL_TIMING_SEQUENCE,
+    generate_linear_topology,
+)
 
 SECOND = 10**12
 
@@ -22,6 +27,12 @@ class SinglePairPaperWorkload:
     fidelity_threshold: float = 0.5
     seed: int = 0
     stop_margin_s: float = 1.0
+    classical_timing_profile: str = CLASSICAL_TIMING_ACP_PAPER
+    end_node_processing_delay_ps: int = ACP_PAPER_END_NODE_PROCESSING_DELAY_PS
+
+    def __post_init__(self):
+        if self.classical_timing_profile not in {CLASSICAL_TIMING_SEQUENCE, CLASSICAL_TIMING_ACP_PAPER}:
+            raise ValueError(f"Unsupported classical timing profile: {self.classical_timing_profile}")
 
     def requests(self) -> list[tuple]:
         interval = 1.0 / self.request_rate_hz
@@ -52,14 +63,15 @@ class SinglePairPaperWorkload:
             coherence_time_s=2.0,
             gate_fidelity=0.99,
             measurement_fidelity=0.99,
+            classical_timing_profile=self.classical_timing_profile,
+            end_node_processing_delay_ps=self.end_node_processing_delay_ps,
             stop_time_s=stop_time_s,
             seed=self.seed,
             encoding_type="single_heralded",
             formalism="bell_diagonal",
         )
         for node in config["nodes"]:
-            if node["type"] == "QuantumRouter":
-                node["seed"] = int(node.get("seed", 0)) + self.seed
+            node["seed"] = int(node.get("seed", 0)) + self.seed
         template = config["templates"]["default_template"]
         template["SingleHeraldedBSM"] = {
             "detectors": [{"efficiency": 0.95}, {"efficiency": 0.95}],

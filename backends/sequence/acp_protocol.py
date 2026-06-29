@@ -60,6 +60,7 @@ class AdaptiveContinuousProtocol(Protocol):
         delta: float = 0.05,
         update_prob: bool = True,
         background_enabled: bool = True,
+        cache_endpoint_processing_delay_ps: int = 0,
     ):
         super().__init__(owner, "adaptive_continuous")
         self.adaptive_max_memory = adaptive_max_memory
@@ -68,6 +69,7 @@ class AdaptiveContinuousProtocol(Protocol):
         self.delta = delta
         self.update_prob = update_prob
         self.background_enabled = background_enabled
+        self.cache_endpoint_processing_delay_ps = cache_endpoint_processing_delay_ps
         self.has_empty_neighbor = True
         self.probability_table: dict[Optional[str], float] = {}
         self.adaptive_memory_used = 0

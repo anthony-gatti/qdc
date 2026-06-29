@@ -19,6 +19,7 @@ from algorithms.acp import AdaptiveContinuous
 from algorithms.odo import ShortestPathOnDemand
 from backends.sequence.runtime import SequenceRuntime
 from workloads.single_pair import SinglePairPaperWorkload
+from topology import CLASSICAL_TIMING_ACP_PAPER, CLASSICAL_TIMING_SEQUENCE
 
 
 def build_algorithm(name: str):
@@ -37,10 +38,19 @@ def main() -> None:
     parser.add_argument("--algorithms", nargs="+", default=["odo", "acp_freshest", "acp_random"])
     parser.add_argument("--requests", type=int, default=100)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--classical-timing-profile",
+        choices=[CLASSICAL_TIMING_SEQUENCE, CLASSICAL_TIMING_ACP_PAPER],
+        default=CLASSICAL_TIMING_ACP_PAPER,
+    )
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
 
-    workload = SinglePairPaperWorkload(num_requests=args.requests, seed=args.seed)
+    workload = SinglePairPaperWorkload(
+        num_requests=args.requests,
+        seed=args.seed,
+        classical_timing_profile=args.classical_timing_profile,
+    )
     summaries = []
     for algorithm_name in args.algorithms:
         algorithm = build_algorithm(algorithm_name)
@@ -86,6 +96,7 @@ def main() -> None:
             "pairs_per_request": 1,
             "application_purification": False,
             "background_purification": False,
+            "classical_timing_profile": args.classical_timing_profile,
         },
         "runs": summaries,
     }
@@ -94,4 +105,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

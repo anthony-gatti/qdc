@@ -31,9 +31,6 @@ from sequence.topology.topology import Topology as Topo
 from backends.sequence.acp_protocol import ACPMessage, ACPMsgType, AdaptiveContinuousProtocol, AdaptiveReservation
 
 
-CACHE_ENDPOINT_PROCESSING_DELAY_PS = 100_000_000
-
-
 def eg_rule_action_await_adaptive(memories_info: list[MemoryInfo], args: Arguments):
     return eg_rule_action_await(memories_info, args)
 
@@ -107,7 +104,13 @@ class ACPResourceManager(ResourceManager):
                 delay = max(delay, int(self.owner.cchannels[left].delay))
         if delay <= 0:
             return 0
-        return 2 * delay + 2 * CACHE_ENDPOINT_PROCESSING_DELAY_PS
+        return 2 * delay + 2 * self._cache_endpoint_processing_delay()
+
+    def _cache_endpoint_processing_delay(self) -> int:
+        acp = getattr(self.owner, "adaptive_continuous", None)
+        if acp is None:
+            return 0
+        return int(getattr(acp, "cache_endpoint_processing_delay_ps", 0))
 
     def _generate_no_purification_rules(self, path, reservation, timecards, memory_array_name, activation_time):
         memory_indices = [card.memory_index for card in timecards if reservation in card.reservations]
@@ -314,7 +317,7 @@ class ACPResourceManager(ResourceManager):
             left_target_index=msg.left_target_index,
             right_target_index=msg.right_target_index,
         )
-        self.owner.send_message(src, response, priority=0, sender_delay=CACHE_ENDPOINT_PROCESSING_DELAY_PS)
+        self.owner.send_message(src, response, priority=0, sender_delay=self._cache_endpoint_processing_delay())
         acp.counters["cache_coordination_responses_sent"] += 1
 
     def handle_cache_response(self, src: str, msg: ACPMessage) -> None:
@@ -333,7 +336,7 @@ class ACPResourceManager(ResourceManager):
         if not msg.answer:
             return
         self.owner.timeline.schedule(Event(
-            self.owner.timeline.now() + CACHE_ENDPOINT_PROCESSING_DELAY_PS,
+            self.owner.timeline.now() + self._cache_endpoint_processing_delay(),
             Process(self, "complete_cache_adoption", [src, msg]),
             -10,
         ))
@@ -399,7 +402,7 @@ class ACPResourceManager(ResourceManager):
             "pair": pair,
             "app_pair": ((left_node.name, left_target.name), (right_node.name, right_target.name)),
             "classical_one_way_delay_ps": one_way_delay,
-            "endpoint_processing_delay_ps": CACHE_ENDPOINT_PROCESSING_DELAY_PS,
+            "endpoint_processing_delay_ps": self._cache_endpoint_processing_delay(),
             "request_start_ps": reservation.start_time,
             "recorded_tts_ps": left_node.timeline.now() - reservation.start_time,
         }
@@ -566,6 +569,7 @@ class ACPQuantumRouter(QuantumRouter):
             delta=float(component_templates.get("acp_delta", 0.05)),
             update_prob=bool(component_templates.get("acp_update_prob", True)),
             background_enabled=bool(component_templates.get("acp_background_enabled", True)),
+            cache_endpoint_processing_delay_ps=int(component_templates.get("acp_cache_endpoint_processing_delay_ps", 0)),
         )
 
     def init(self):
