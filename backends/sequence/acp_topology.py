@@ -28,7 +28,10 @@ from sequence.topology.node import BSMNode, QuantumRouter
 from sequence.topology.router_net_topo import RouterNetTopo
 from sequence.topology.topology import Topology as Topo
 
-from backends.sequence.acp_protocol import AdaptiveContinuousProtocol, AdaptiveReservation
+from backends.sequence.acp_protocol import ACPMessage, ACPMsgType, AdaptiveContinuousProtocol, AdaptiveReservation
+
+
+CACHE_ENDPOINT_PROCESSING_DELAY_PS = 100_000_000
 
 
 def eg_rule_action_await_adaptive(memories_info: list[MemoryInfo], args: Arguments):
@@ -79,6 +82,7 @@ class ACPResourceManager(ResourceManager):
         super().__init__(owner, memory_array_name)
         self.memory_manager = ACPMemoryManager(owner.components[memory_array_name])
         self.memory_manager.set_resource_manager(self)
+        self.cache_satisfied_reservations: set[int] = set()
 
     def generate_load_rules(self, path: list[str], reservation: Reservation, timecards: list, memory_array_name: str):
         if isinstance(reservation, AdaptiveReservation):
@@ -86,12 +90,12 @@ class ACPResourceManager(ResourceManager):
 
         activation_time = reservation.start_time
         if getattr(self.owner, "adaptive_continuous", None) is not None:
-            activation_time += self._cache_coordination_delay(path)
             self.owner.timeline.schedule(Event(
                 activation_time,
-                Process(self, "adopt_cached_pairs_for_reservation", [path, reservation, timecards, memory_array_name]),
+                Process(self, "initiate_cached_pairs_for_reservation", [path, reservation, timecards, memory_array_name]),
                 -10,
             ))
+            activation_time += self._cache_coordination_delay(path)
         self._generate_no_purification_rules(path, reservation, timecards, memory_array_name, activation_time)
 
     def _cache_coordination_delay(self, path: list[str]) -> int:
@@ -101,7 +105,9 @@ class ACPResourceManager(ResourceManager):
                 delay = max(delay, int(self.owner.cchannels[right].delay))
             elif right == self.owner.name and left in self.owner.cchannels:
                 delay = max(delay, int(self.owner.cchannels[left].delay))
-        return delay
+        if delay <= 0:
+            return 0
+        return 2 * delay + 2 * CACHE_ENDPOINT_PROCESSING_DELAY_PS
 
     def _generate_no_purification_rules(self, path, reservation, timecards, memory_array_name, activation_time):
         memory_indices = [card.memory_index for card in timecards if reservation in card.reservations]
@@ -162,26 +168,31 @@ class ACPResourceManager(ResourceManager):
 
         for rule in rules:
             rule.set_reservation(reservation)
-            self.owner.timeline.schedule(Event(activation_time, Process(self, "load", [rule]), self.owner.timeline.schedule_counter))
+            self.owner.timeline.schedule(Event(activation_time, Process(self, "load_application_rule", [rule, reservation]), self.owner.timeline.schedule_counter))
             self.owner.timeline.schedule(Event(reservation.end_time, Process(self, "expire", [rule]), self.owner.timeline.schedule_counter))
         for card in timecards:
             if reservation in card.reservations:
                 memory = self.owner.components[memory_array_name][card.memory_index]
                 self.owner.timeline.schedule(Event(reservation.end_time, Process(self, "update", [None, memory, MemoryInfo.RAW]), self.owner.timeline.schedule_counter))
 
-    def adopt_cached_pairs_for_reservation(self, path: list[str], reservation: Reservation, timecards: list, memory_array_name: str) -> int:
+    def load_application_rule(self, rule: Rule, reservation: Reservation) -> None:
+        if id(reservation) in self.cache_satisfied_reservations:
+            return
+        self.load(rule)
+
+    def initiate_cached_pairs_for_reservation(self, path: list[str], reservation: Reservation, timecards: list, memory_array_name: str) -> int:
         if self.owner.name not in path or not hasattr(self.owner, "adaptive_continuous"):
             return 0
         index = path.index(self.owner.name)
-        adopted = 0
+        requested = 0
         if index < len(path) - 1:
             right_name = path[index + 1]
             right_node = self.owner.timeline.get_entity_by_name(right_name)
             left_indices = self._edge_indices(self.owner, reservation, timecards, path, "right")
             right_indices = self._edge_indices(right_node, reservation, right_node.network_manager.get_timecards(), path, "left")
             for left_idx, right_idx in zip(left_indices, right_indices):
-                adopted += self._attempt_adopt(self.owner, right_node, left_idx, right_idx, reservation)
-        return adopted
+                requested += self._request_cached_pair(right_node, left_idx, right_idx, reservation)
+        return requested
 
     def _edge_indices(self, node, reservation, timecards, path, side: str) -> list[int]:
         indices = [card.memory_index for card in timecards if reservation in card.reservations]
@@ -195,46 +206,202 @@ class ACPResourceManager(ResourceManager):
             return indices[:size] if index == 0 else indices[size:]
         raise ValueError(side)
 
-    def _attempt_adopt(self, left_node, right_node, left_target_index: int, right_target_index: int, reservation: Reservation) -> int:
-        left_acp = left_node.adaptive_continuous
-        pair = left_acp.match_generated_entanglement_pair(left_node.name, right_node.name)
+    def _request_cached_pair(self, right_node, left_target_index: int, right_target_index: int, reservation: Reservation) -> int:
+        left_acp = self.owner.adaptive_continuous
+        now = self.owner.timeline.now()
+        left_acp.lifecycle_events.append({
+            "event": "cache_check",
+            "time_ps": now,
+            "reservation": reservation.identity,
+            "request_start_ps": reservation.start_time,
+            "left": self.owner.name,
+            "right": right_node.name,
+        })
+        pair = self._select_cached_pair(self.owner, right_node, reservation)
         if pair is None:
             return 0
+        left_target = self.owner.components[self.owner.memo_arr_name][left_target_index]
+        if not self._target_raw(self.owner, left_target):
+            return 0
+        left_acp.lifecycle_events.append({
+            "event": "cache_pair_selected",
+            "time_ps": now,
+            "reservation": reservation.identity,
+            "pair": pair,
+            "left_target_index": left_target_index,
+            "right_target_index": right_target_index,
+        })
+        message = ACPMessage(
+            ACPMsgType.CACHE_REQUEST,
+            reservation,
+            pair=pair,
+            left_target_index=left_target_index,
+            right_target_index=right_target_index,
+        )
+        self.owner.send_message(right_node.name, message)
+        left_acp.counters["cache_coordination_requests_sent"] += 1
+        left_acp.lifecycle_events.append({
+            "event": "cache_request_sent",
+            "time_ps": now,
+            "reservation": reservation.identity,
+            "pair": pair,
+            "to": right_node.name,
+        })
+        return 1
+
+    def _select_cached_pair(self, left_node, right_node, reservation: Reservation):
+        left_acp = left_node.adaptive_continuous
+        candidates = [
+            pair for pair in left_acp.generated_entanglement_pairs
+            if pair[0][0] == left_node.name and pair[1][0] == right_node.name
+        ]
+        left_acp.counters["cache_checks"] += 1
+        if not candidates:
+            left_acp.counters["cache_misses"] += 1
+            return None
+        left_acp.counters["cache_candidates_found"] += 1
+        if left_acp.strategy == "random":
+            ordered = list(sorted(candidates))
+            left_node.get_generator().shuffle(ordered)
+        else:
+            ordered = sorted(candidates, key=left_acp.get_fidelity, reverse=True)
+
+        right_acp = getattr(right_node, "adaptive_continuous", None)
+        for pair in ordered:
+            reverse_pair = (pair[1], pair[0])
+            if right_acp is None or reverse_pair not in right_acp.generated_entanglement_pairs:
+                left_acp.remove_entanglement_pair(pair, reason="stale")
+                left_acp.counters["cache_candidates_stale"] += 1
+                continue
+            if self._candidate_valid(pair, left_node, right_node, reservation):
+                return pair
+            left_acp.remove_entanglement_pair(pair, reason="stale")
+            left_acp.counters["cache_candidates_stale"] += 1
+        left_acp.counters["cache_misses"] += 1
+        return None
+
+    def handle_cache_request(self, src: str, msg: ACPMessage) -> None:
+        acp = getattr(self.owner, "adaptive_continuous", None)
+        if acp is None or msg.reservation is None or msg.pair is None:
+            return
+        reservation = msg.reservation
+        pair = msg.pair
+        reverse_pair = (pair[1], pair[0])
+        left_node = self.owner.timeline.get_entity_by_name(src)
+        answer = (
+            left_node is not None
+            and reverse_pair in acp.generated_entanglement_pairs
+            and self._candidate_valid(pair, left_node, self.owner, reservation)
+        )
+        if answer:
+            right_target = self.owner.components[self.owner.memo_arr_name][msg.right_target_index]
+            answer = self._target_raw(self.owner, right_target)
+        if not answer:
+            acp.counters["cache_coordination_requests_rejected"] += 1
+        acp.lifecycle_events.append({
+            "event": "cache_remote_checked",
+            "time_ps": self.owner.timeline.now(),
+            "reservation": reservation.identity,
+            "pair": reverse_pair,
+            "answer": answer,
+            "from": src,
+        })
+        response = ACPMessage(
+            ACPMsgType.CACHE_RESPONSE,
+            reservation,
+            answer=answer,
+            pair=pair,
+            left_target_index=msg.left_target_index,
+            right_target_index=msg.right_target_index,
+        )
+        self.owner.send_message(src, response, priority=0, sender_delay=CACHE_ENDPOINT_PROCESSING_DELAY_PS)
+        acp.counters["cache_coordination_responses_sent"] += 1
+
+    def handle_cache_response(self, src: str, msg: ACPMessage) -> None:
+        acp = getattr(self.owner, "adaptive_continuous", None)
+        if acp is None or msg.reservation is None or msg.pair is None:
+            return
+        acp.counters["cache_coordination_responses_received"] += 1
+        acp.lifecycle_events.append({
+            "event": "cache_remote_confirmed",
+            "time_ps": self.owner.timeline.now(),
+            "reservation": msg.reservation.identity,
+            "pair": msg.pair,
+            "answer": bool(msg.answer),
+            "from": src,
+        })
+        if not msg.answer:
+            return
+        self.owner.timeline.schedule(Event(
+            self.owner.timeline.now() + CACHE_ENDPOINT_PROCESSING_DELAY_PS,
+            Process(self, "complete_cache_adoption", [src, msg]),
+            -10,
+        ))
+
+    def complete_cache_adoption(self, right_name: str, msg: ACPMessage) -> int:
+        reservation = msg.reservation
+        pair = msg.pair
+        if reservation is None or pair is None:
+            return 0
+        left_node = self.owner
+        right_node = self.owner.timeline.get_entity_by_name(right_name)
+        if right_node is None:
+            return 0
+        left_acp = left_node.adaptive_continuous
+        right_acp = getattr(right_node, "adaptive_continuous", None)
         right_pair = (pair[1], pair[0])
+        if pair not in left_acp.generated_entanglement_pairs:
+            return 0
+        if right_acp is None or right_pair not in right_acp.generated_entanglement_pairs:
+            return 0
         if not self._candidate_valid(pair, left_node, right_node, reservation):
             return 0
         left_bg = left_node.timeline.get_entity_by_name(pair[0][1])
         right_bg = right_node.timeline.get_entity_by_name(pair[1][1])
-        left_target = left_node.components[left_node.memo_arr_name][left_target_index]
-        right_target = right_node.components[right_node.memo_arr_name][right_target_index]
+        left_target = left_node.components[left_node.memo_arr_name][msg.left_target_index]
+        right_target = right_node.components[right_node.memo_arr_name][msg.right_target_index]
         if not self._target_raw(left_node, left_target) or not self._target_raw(right_node, right_target):
             return 0
 
         left_meta = dict(left_acp.generated_pair_metadata.get(pair, {}))
-        right_acp = getattr(right_node, "adaptive_continuous", None)
         if left_target is not left_bg:
             left_node.resource_manager.memory_manager.swap_two_memory(left_target.name, left_bg.name)
         if right_target is not right_bg:
             right_node.resource_manager.memory_manager.swap_two_memory(right_target.name, right_bg.name)
         self._mark_adopted(left_node, left_target, right_node.name, right_target.name, reservation, left_meta)
         self._mark_adopted(right_node, right_target, left_node.name, left_target.name, reservation, left_meta)
+        left_node.resource_manager.cache_satisfied_reservations.add(id(reservation))
+        right_node.resource_manager.cache_satisfied_reservations.add(id(reservation))
+        left_acp.lifecycle_events.append({
+            "event": "cache_ownership_transferred",
+            "time_ps": left_node.timeline.now(),
+            "reservation": reservation.identity,
+            "pair": pair,
+            "app_pair": ((left_node.name, left_target.name), (right_node.name, right_target.name)),
+        })
         left_node.get_idle_memory(left_node.resource_manager.memory_manager.get_info_by_memory(left_target))
         right_node.get_idle_memory(right_node.resource_manager.memory_manager.get_info_by_memory(right_target))
         left_node.resource_manager.update(None, left_bg, MemoryInfo.RAW)
         right_node.resource_manager.update(None, right_bg, MemoryInfo.RAW)
         left_acp.remove_entanglement_pair(pair, reason="application")
         left_acp.adaptive_memory_used_minus_one(left_bg)
+        left_acp.counters["cache_hits"] += 1
         left_acp.counters["background_pairs_reused"] += 1
         if right_acp is not None:
             right_acp.remove_entanglement_pair(right_pair, reason="application")
             right_acp.adaptive_memory_used_minus_one(right_bg)
             right_acp.counters["background_pairs_reused"] += 1
+        one_way_delay = int(left_node.cchannels[right_node.name].delay)
         event = {
             "event": "background_pair_adopted_by_application",
             "time_ps": left_node.timeline.now(),
+            "reservation": reservation.identity,
             "pair": pair,
             "app_pair": ((left_node.name, left_target.name), (right_node.name, right_target.name)),
-            "classical_delay_ps": int(left_node.cchannels[right_node.name].delay),
+            "classical_one_way_delay_ps": one_way_delay,
+            "endpoint_processing_delay_ps": CACHE_ENDPOINT_PROCESSING_DELAY_PS,
+            "request_start_ps": reservation.start_time,
+            "recorded_tts_ps": left_node.timeline.now() - reservation.start_time,
         }
         left_acp.lifecycle_events.append(event)
         if right_acp is not None:

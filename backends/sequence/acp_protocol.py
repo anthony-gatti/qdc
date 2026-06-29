@@ -20,6 +20,8 @@ class ACPMsgType(Enum):
     REQUEST = auto()
     RESPOND = auto()
     PATH_FEEDBACK = auto()
+    CACHE_REQUEST = auto()
+    CACHE_RESPONSE = auto()
 
 
 class ACPMessage(Message):
@@ -29,6 +31,10 @@ class ACPMessage(Message):
         self.answer = kwargs.get("answer")
         self.path = kwargs.get("path")
         self.timestamp = kwargs.get("timestamp")
+        self.pair = kwargs.get("pair")
+        self.left_target_index = kwargs.get("left_target_index")
+        self.right_target_index = kwargs.get("right_target_index")
+        self.reason = kwargs.get("reason", "")
 
 
 class AdaptiveReservation(Reservation):
@@ -135,6 +141,10 @@ class AdaptiveContinuousProtocol(Protocol):
             self._handle_response(src, msg)
         elif msg.msg_type is ACPMsgType.PATH_FEEDBACK and msg.path:
             self.record_served_path(msg.path, msg.timestamp or self.owner.timeline.now())
+        elif msg.msg_type is ACPMsgType.CACHE_REQUEST:
+            self.owner.resource_manager.handle_cache_request(src, msg)
+        elif msg.msg_type is ACPMsgType.CACHE_RESPONSE:
+            self.owner.resource_manager.handle_cache_response(src, msg)
 
     def _handle_request(self, src: str, msg: ACPMessage) -> None:
         self.counters["ac_request_received"] += 1
@@ -194,7 +204,13 @@ class AdaptiveContinuousProtocol(Protocol):
         self.generated_pair_metadata[pair] = metadata
         self.generated_pair_metadata[(pair[1], pair[0])] = metadata
         self.counters["background_endpoint_records"] += 1
-        self.lifecycle_events.append({"event": "background_pair_available", "time_ps": now, "pair": pair})
+        self.lifecycle_events.append({
+            "event": "background_pair_available",
+            "time_ps": now,
+            "pair": pair,
+            "adaptive_reservation": metadata["adaptive_reservation"],
+            "link": metadata["link"],
+        })
 
     def remove_entanglement_pair(self, pair: tuple, reason: str = "other") -> None:
         reverse = (pair[1], pair[0])
@@ -220,7 +236,7 @@ class AdaptiveContinuousProtocol(Protocol):
         if not candidates:
             self.counters["cache_misses"] += 1
             return None
-        self.counters["cache_hits"] += 1
+        self.counters["cache_candidates_found"] += 1
         if self.strategy == "random":
             index = int(self.owner.get_generator().integers(0, len(candidates)))
             return sorted(candidates)[index]

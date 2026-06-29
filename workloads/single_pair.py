@@ -47,9 +47,9 @@ class SinglePairPaperWorkload:
             inter_node_distance_m=self.link_distance_m,
             memo_size=self.memories_per_node,
             adaptive_max_memory=adaptive_memory,
-            memory_fidelity=0.99,
-            memory_efficiency=0.35,
-            coherence_time_s=5.0,
+            memory_fidelity=0.95,
+            memory_efficiency=0.6,
+            coherence_time_s=2.0,
             gate_fidelity=0.99,
             measurement_fidelity=0.99,
             stop_time_s=stop_time_s,
@@ -60,4 +60,8 @@ class SinglePairPaperWorkload:
         for node in config["nodes"]:
             if node["type"] == "QuantumRouter":
                 node["seed"] = int(node.get("seed", 0)) + self.seed
+        template = config["templates"]["default_template"]
+        template["SingleHeraldedBSM"] = {
+            "detectors": [{"efficiency": 0.95}, {"efficiency": 0.95}],
+        }
         return config

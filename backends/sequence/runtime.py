@@ -78,6 +78,8 @@ class SequenceRuntime:
         max_memory = {}
         memory_high_watermark = {}
         probability_tables = {}
+        probability_updates_by_node = {}
+        cached_inventory = set()
         lifecycle_events = []
         for router in network_topo.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER):
             acp = getattr(router, "adaptive_continuous", None)
@@ -86,16 +88,52 @@ class SequenceRuntime:
             counters.update(acp.counters)
             max_memory[router.name] = acp.adaptive_memory_used
             memory_high_watermark[router.name] = acp.counters.get("adaptive_memory_high_watermark", 0)
+            probability_updates_by_node[router.name] = acp.counters.get("probability_updates", 0)
             probability_tables[router.name] = {
                 ("None" if key is None else key): value
                 for key, value in acp.probability_table.items()
             }
+            for pair in acp.generated_entanglement_pairs:
+                cached_inventory.add(self._canonical_pair(pair))
             lifecycle_events.extend(acp.lifecycle_events)
+        normalized = self._normalize_acp_events(lifecycle_events)
+        normalized["physical_cached_inventory_at_end"] = len(cached_inventory)
         return {
             "algorithm": algorithm_name,
             "counters": dict(counters),
             "adaptive_memory_at_end": max_memory,
             "adaptive_memory_high_watermark_by_node": memory_high_watermark,
+            "probability_updates_by_node": probability_updates_by_node,
             "probability_tables": probability_tables,
+            "normalized_counters": normalized,
             "lifecycle_events": lifecycle_events,
         }
+
+    def _normalize_acp_events(self, lifecycle_events: list[dict]) -> dict:
+        generated = set()
+        reused = set()
+        reuse_tts_ps = []
+        for event in lifecycle_events:
+            name = event.get("event")
+            if name == "background_pair_available":
+                pair = event.get("pair")
+                if pair:
+                    generated.add((
+                        event.get("adaptive_reservation", event.get("time_ps")),
+                        self._canonical_pair(pair),
+                    ))
+            elif name == "background_pair_adopted_by_application":
+                pair = event.get("app_pair") or event.get("pair")
+                if pair:
+                    key = (event.get("reservation"), self._canonical_pair(pair))
+                    if key not in reused and event.get("recorded_tts_ps") is not None:
+                        reuse_tts_ps.append(event["recorded_tts_ps"])
+                    reused.add(key)
+        return {
+            "physical_background_pairs_generated": len(generated),
+            "physical_background_pairs_reused": len(reused),
+            "cache_reuse_tts_ps": sorted(reuse_tts_ps),
+        }
+
+    def _canonical_pair(self, pair) -> tuple:
+        return tuple(sorted((tuple(pair[0]), tuple(pair[1]))))

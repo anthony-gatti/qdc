@@ -17,6 +17,7 @@ class PairRequestApp(RequestApp):
         self.time_to_serve = {}
         self.entanglement_fidelities = defaultdict(list)
         self.reservation_outcomes = {}
+        self._path_feedback_recorded = set()
 
     def start(self, responder, start_t, end_t, memo_size, fidelity,
               entanglement_number=1, identity=0):
@@ -48,6 +49,9 @@ class PairRequestApp(RequestApp):
             self.node.resource_manager.expire_rules_by_reservation(reservation)
 
     def _record_successful_path(self, reservation) -> None:
+        if id(reservation) in self._path_feedback_recorded:
+            return
+        self._path_feedback_recorded.add(id(reservation))
         path = getattr(reservation, "path", [])
         if not path:
             return
