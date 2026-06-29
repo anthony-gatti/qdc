@@ -179,7 +179,7 @@ class ACPResourceManager(ResourceManager):
                 self.owner.timeline.schedule(Event(reservation.end_time, Process(self, "update", [None, memory, MemoryInfo.RAW]), self.owner.timeline.schedule_counter))
 
     def load_application_rule(self, rule: Rule, reservation: Reservation) -> None:
-        if id(reservation) in self.cache_satisfied_reservations:
+        if len(getattr(reservation, "path", [])) <= 2 and id(reservation) in self.cache_satisfied_reservations:
             return
         self.load(rule)
 
@@ -382,8 +382,9 @@ class ACPResourceManager(ResourceManager):
             "pair": pair,
             "app_pair": ((left_node.name, left_target.name), (right_node.name, right_target.name)),
         })
-        left_node.get_idle_memory(left_node.resource_manager.memory_manager.get_info_by_memory(left_target))
-        right_node.get_idle_memory(right_node.resource_manager.memory_manager.get_info_by_memory(right_target))
+        if len(getattr(reservation, "path", [])) <= 2:
+            left_node.get_idle_memory(left_node.resource_manager.memory_manager.get_info_by_memory(left_target))
+            right_node.get_idle_memory(right_node.resource_manager.memory_manager.get_info_by_memory(right_target))
         left_node.resource_manager.update(None, left_bg, MemoryInfo.RAW)
         right_node.resource_manager.update(None, right_bg, MemoryInfo.RAW)
         left_acp.remove_entanglement_pair(pair, reason="application")

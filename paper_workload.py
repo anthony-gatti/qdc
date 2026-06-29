@@ -71,7 +71,7 @@ def prepare_topology(scenario: str, seed: int, adaptive_memory: int,
                      output: Path) -> dict:
     """Patch the archived paper topology without modifying the ACP checkout."""
     spec = SCENARIOS[scenario]
-    source = Path(__file__).parent / "external" / "acp" / "config" / spec["topology"]
+    source = _topology_source(spec["topology"])
     config = json.loads(source.read_text())
     config["formalism"] = "bell_diagonal"
     config["encoding_type"] = "single_heralded"
@@ -88,6 +88,18 @@ def prepare_topology(scenario: str, seed: int, adaptive_memory: int,
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(config, indent=2) + "\n")
     return config
+
+
+def _topology_source(filename: str) -> Path:
+    candidates = [
+        Path(__file__).parent / "external" / "acp" / "config" / filename,
+        Path(__file__).resolve().parents[1] / "docs" / "adaptive-continuous" / "config" / filename,
+        Path(__file__).resolve().parents[1] / "docs" / "acp_modified" / "config" / filename,
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    raise FileNotFoundError(f"Could not find archived paper topology {filename}")
 
 
 def router_graph(config: dict) -> nx.Graph:
@@ -137,4 +149,3 @@ def validate_paths(scenario: str, config: dict, requests: list[tuple]) -> None:
         actual = len(path) - 2
         if actual != expected:
             raise ValueError(f"{scenario}: path {path} has {actual} intermediate hops, expected {expected}")
-
