@@ -43,6 +43,7 @@ class SequenceRuntime:
                 "acp_period_ps": algorithm.period_ps,
                 "acp_delta": algorithm.delta,
                 "acp_background_enabled": algorithm.background_enabled,
+                "acp_purify": algorithm.purify,
             })
         elif isinstance(algorithm, ShortestPathOnDemand):
             network_topo = RouterNetTopo(topology_config)

@@ -17,6 +17,7 @@ class AdaptiveContinuous(RoutingAlgorithm):
     period_ps: int = 100_000_000_000
     delta: float = 0.05
     background_enabled: bool = True
+    purify: bool = False
     algorithm_name: str | None = None
     config: AlgorithmConfig = None
 

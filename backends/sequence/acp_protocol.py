@@ -60,6 +60,7 @@ class AdaptiveContinuousProtocol(Protocol):
         delta: float = 0.05,
         update_prob: bool = True,
         background_enabled: bool = True,
+        purify: bool = False,
         cache_endpoint_processing_delay_ps: int = 0,
     ):
         super().__init__(owner, "adaptive_continuous")
@@ -69,6 +70,7 @@ class AdaptiveContinuousProtocol(Protocol):
         self.delta = delta
         self.update_prob = update_prob
         self.background_enabled = background_enabled
+        self.purify = purify
         self.cache_endpoint_processing_delay_ps = cache_endpoint_processing_delay_ps
         self.has_empty_neighbor = True
         self.probability_table: dict[Optional[str], float] = {}
@@ -253,6 +255,17 @@ class AdaptiveContinuousProtocol(Protocol):
             metadata.get("generation_time_ps", 0),
             pair,
         )
+
+    def find_purification_partner(self, pair: tuple) -> tuple | None:
+        this_fidelity = self.get_fidelity(pair)
+        this_node, remote_node = pair[0][0], pair[1][0]
+        candidates = [
+            candidate for candidate in self.generated_entanglement_pairs
+            if candidate != pair and candidate[0][0] == this_node and candidate[1][0] == remote_node
+        ]
+        if not candidates:
+            return None
+        return min(candidates, key=lambda candidate: (abs(this_fidelity - self.get_fidelity(candidate)), candidate))
 
     def get_fidelity(self, pair: tuple) -> float:
         memory = self.owner.timeline.get_entity_by_name(pair[0][1])

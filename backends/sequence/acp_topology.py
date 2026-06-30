@@ -5,6 +5,9 @@ from __future__ import annotations
 from typing import Any
 
 from sequence.entanglement_management.generation import EntanglementGenerationA
+from sequence.entanglement_management.purification.bbpssw_bds import BBPSSW_BDS
+from sequence.entanglement_management.purification.bbpssw_protocol import BBPSSWProtocol
+from sequence.entanglement_management.purification.bbpssw_protocol import BBPSSWMsgType
 from sequence.entanglement_management.swapping import EntanglementSwappingA, EntanglementSwappingB
 from sequence.kernel.event import Event
 from sequence.kernel.process import Process
@@ -29,6 +32,28 @@ from sequence.topology.router_net_topo import RouterNetTopo
 from sequence.topology.topology import Topology as Topo
 
 from backends.sequence.acp_protocol import ACPMessage, ACPMsgType, AdaptiveContinuousProtocol, AdaptiveReservation
+
+
+class ACPBackgroundPurification(BBPSSW_BDS):
+    """BBPSSW BDS with stale-state handling for ACP background cache pairs."""
+
+    def received_message(self, src: str, msg) -> None:
+        if msg.msg_type is not BBPSSWMsgType.PURIFICATION_RES:
+            return super().received_message(src, msg)
+        purification_success = self.meas_res == msg.meas_res
+        self.update_resource_manager(self.meas_memo, MemoryInfo.RAW)
+        if not purification_success:
+            self.update_resource_manager(self.kept_memo, MemoryInfo.RAW)
+            return
+        try:
+            remote_kept_memory = self.owner.timeline.get_entity_by_name(self.remote_memories[0])
+            remote_kept_memory.bds_decohere()
+            self.kept_memo.bds_decohere()
+            self.kept_memo.fidelity = self.kept_memo.get_bds_fidelity()
+        except Exception:
+            self.update_resource_manager(self.kept_memo, MemoryInfo.RAW)
+            return
+        self.update_resource_manager(self.kept_memo, state=MemoryInfo.PURIFIED)
 
 
 def eg_rule_action_await_adaptive(memories_info: list[MemoryInfo], args: Arguments):
@@ -444,6 +469,8 @@ class ACPResourceManager(ResourceManager):
 
     def update(self, protocol, memory, state: str) -> None:
         self.memory_manager.update(memory, state)
+        if isinstance(protocol, BBPSSWProtocol) and state == MemoryInfo.RAW:
+            self._handle_purification_update(protocol, memory, state)
         if state == MemoryInfo.RAW:
             self._clear_qdc_attrs(memory)
         else:
@@ -474,6 +501,9 @@ class ACPResourceManager(ResourceManager):
         self.owner.get_idle_memory(memo_info)
 
     def _mark_generation_source(self, protocol, memory, state: str) -> None:
+        if isinstance(protocol, BBPSSWProtocol):
+            self._handle_purification_update(protocol, memory, state)
+            return
         if protocol is None or not isinstance(protocol, EntanglementGenerationA):
             return
         if state != MemoryInfo.ENTANGLED:
@@ -486,6 +516,7 @@ class ACPResourceManager(ResourceManager):
             memory.qdc_generation_time_ps = self.owner.timeline.now()
             acp.add_generated_entanglement_pair(pair, reservation)
             acp.counters["background_generation_successes"] += 1
+            self._maybe_start_background_purification(protocol, pair)
             return
         memory.qdc_generation_source = "application"
         memory.qdc_generation_time_ps = self.owner.timeline.now()
@@ -494,6 +525,158 @@ class ACPResourceManager(ResourceManager):
             "link": tuple(sorted((self.owner.name, memory.entangled_memory["node_id"]))),
             "generation_time_ps": memory.qdc_generation_time_ps,
         }]
+
+    def _maybe_start_background_purification(self, protocol, pair: tuple) -> None:
+        acp = self.owner.adaptive_continuous
+        if not acp.purify or not getattr(protocol, "primary", False):
+            return
+        if not self._background_pair_valid(self.owner, pair):
+            acp.remove_entanglement_pair(pair, reason="stale")
+            acp.counters["purification_candidates_stale"] += 1
+            return
+        pair2 = acp.find_purification_partner(pair)
+        remote_node = self.owner.timeline.get_entity_by_name(pair[1][0])
+        remote_acp = getattr(remote_node, "adaptive_continuous", None) if remote_node is not None else None
+        if remote_acp is None:
+            return
+        while pair2 is not None and not self._background_pair_valid(self.owner, pair2):
+            acp.remove_entanglement_pair(pair2, reason="stale")
+            acp.counters["purification_candidates_stale"] += 1
+            pair2 = acp.find_purification_partner(pair)
+        if pair2 is None:
+            return
+        reverse_pair = (pair[1], pair[0])
+        reverse_pair2 = (pair2[1], pair2[0])
+        if (
+            reverse_pair not in remote_acp.generated_entanglement_pairs
+            or reverse_pair2 not in remote_acp.generated_entanglement_pairs
+            or not self._background_pair_valid(remote_node, reverse_pair)
+            or not self._background_pair_valid(remote_node, reverse_pair2)
+        ):
+            return
+
+        acp.remove_entanglement_pair(pair, reason="purification_input")
+        acp.remove_entanglement_pair(pair2, reason="purification_input")
+        remote_acp.remove_entanglement_pair(reverse_pair, reason="purification_input")
+        remote_acp.remove_entanglement_pair(reverse_pair2, reason="purification_input")
+
+        local_protocol = self._create_purification_protocol(self.owner, pair, pair2)
+        remote_protocol = self._create_purification_protocol(remote_node, reverse_pair, reverse_pair2)
+        local_protocol.set_others(remote_protocol.name, remote_node.name, [reverse_pair[0][1], reverse_pair2[0][1]])
+        remote_protocol.set_others(local_protocol.name, self.owner.name, [pair[0][1], pair2[0][1]])
+        local_protocol.rule = getattr(protocol, "rule", None)
+        remote_protocol.rule = getattr(protocol, "rule", None)
+        self.owner.protocols.append(local_protocol)
+        remote_node.protocols.append(remote_protocol)
+        acp.counters["purification_attempts"] += 1
+        remote_acp.counters["purification_attempts"] += 1
+        event = {
+            "event": "purification_started",
+            "time_ps": self.owner.timeline.now(),
+            "kept_pair": pair,
+            "measured_pair": pair2,
+            "remote": remote_node.name,
+        }
+        acp.lifecycle_events.append(event)
+        remote_acp.lifecycle_events.append(dict(event, node=remote_node.name))
+
+        start_time = self.owner.timeline.now() + int(self.owner.cchannels[remote_node.name].delay)
+        self.owner.timeline.schedule(Event(
+            start_time,
+            Process(self, "start_background_purification", [local_protocol, remote_protocol]),
+            self.owner.timeline.schedule_counter,
+        ))
+
+    def start_background_purification(self, local_protocol: BBPSSWProtocol, remote_protocol: BBPSSWProtocol) -> None:
+        remote_node = self.owner.timeline.get_entity_by_name(local_protocol.remote_node_name)
+        remote_acp = getattr(remote_node, "adaptive_continuous", None) if remote_node is not None else None
+        if (
+            remote_node is None
+            or not self._purification_protocol_valid(local_protocol)
+            or not remote_node.resource_manager._purification_protocol_valid(remote_protocol)
+        ):
+            self._abort_purification_protocol(local_protocol)
+            if remote_node is not None:
+                remote_node.resource_manager._abort_purification_protocol(remote_protocol)
+            self.owner.adaptive_continuous.counters["purification_aborts"] += 1
+            if remote_acp is not None:
+                remote_acp.counters["purification_aborts"] += 1
+            return
+        remote_protocol.start()
+        local_protocol.start()
+
+    def _purification_protocol_valid(self, protocol: BBPSSWProtocol) -> bool:
+        remote_nodes = set()
+        memory_names = set()
+        for memory in protocol.memories:
+            if memory.name in memory_names:
+                return False
+            memory_names.add(memory.name)
+            if memory.entangled_memory["node_id"] is None:
+                return False
+            info = self.memory_manager.get_info_by_memory(memory)
+            if info.state != MemoryInfo.OCCUPIED:
+                return False
+            try:
+                self.owner.timeline.quantum_manager.get(memory.qstate_key)
+            except Exception:
+                return False
+            remote_nodes.add(memory.entangled_memory["node_id"])
+        return len(remote_nodes) == 1
+
+    def _abort_purification_protocol(self, protocol: BBPSSWProtocol) -> None:
+        for memory in list(protocol.memories):
+            info = self.memory_manager.get_info_by_memory(memory)
+            if info.state != MemoryInfo.RAW:
+                self.update(protocol, memory, MemoryInfo.RAW)
+        if protocol in self.owner.protocols:
+            self.owner.protocols.remove(protocol)
+
+    def _background_pair_valid(self, node, pair: tuple) -> bool:
+        memory = node.timeline.get_entity_by_name(pair[0][1])
+        if memory is None or memory.entangled_memory["node_id"] != pair[1][0] or memory.entangled_memory["memo_id"] != pair[1][1]:
+            return False
+        info = node.resource_manager.memory_manager.get_info_by_memory(memory)
+        return info.state in (MemoryInfo.ENTANGLED, MemoryInfo.PURIFIED)
+
+    def _create_purification_protocol(self, node, pair: tuple, pair2: tuple):
+        kept_memory = node.timeline.get_entity_by_name(pair[0][1])
+        measured_memory = node.timeline.get_entity_by_name(pair2[0][1])
+        protocol = ACPBackgroundPurification(node, f"ACP.BBPSSW.{kept_memory.name}.{measured_memory.name}", kept_memory, measured_memory)
+        for memory in (kept_memory, measured_memory):
+            memory.detach(memory.memory_array)
+            memory.attach(protocol)
+            node.resource_manager.memory_manager.get_info_by_memory(memory).to_occupied()
+        return protocol
+
+    def _handle_purification_update(self, protocol: BBPSSWProtocol, memory, state: str) -> None:
+        acp = getattr(self.owner, "adaptive_continuous", None)
+        if acp is None:
+            return
+        if state == MemoryInfo.RAW:
+            acp.adaptive_memory_used_minus_one(memory)
+            if memory is protocol.kept_memo:
+                acp.counters["purification_failures"] += 1
+                acp.lifecycle_events.append({
+                    "event": "purification_failed",
+                    "time_ps": self.owner.timeline.now(),
+                    "memory": memory.name,
+                    "remote": protocol.remote_node_name,
+                })
+            return
+        if state == MemoryInfo.PURIFIED and memory is protocol.kept_memo:
+            pair = ((self.owner.name, memory.name), (memory.entangled_memory["node_id"], memory.entangled_memory["memo_id"]))
+            memory.qdc_generation_source = "background_purified"
+            memory.qdc_generation_time_ps = self.owner.timeline.now()
+            acp.add_generated_entanglement_pair(pair, getattr(protocol, "rule", None))
+            acp.counters["purification_successes"] += 1
+            acp.lifecycle_events.append({
+                "event": "purification_succeeded",
+                "time_ps": self.owner.timeline.now(),
+                "pair": pair,
+                "remote": protocol.remote_node_name,
+                "fidelity": self.memory_manager.get_info_by_memory(memory).fidelity,
+            })
 
     def _clear_qdc_attrs(self, memory) -> None:
         for name in ("qdc_generation_source", "qdc_generation_time_ps", "qdc_elementary_sources", "qdc_application_reservation"):
@@ -570,6 +753,7 @@ class ACPQuantumRouter(QuantumRouter):
             delta=float(component_templates.get("acp_delta", 0.05)),
             update_prob=bool(component_templates.get("acp_update_prob", True)),
             background_enabled=bool(component_templates.get("acp_background_enabled", True)),
+            purify=bool(component_templates.get("acp_purify", False)),
             cache_endpoint_processing_delay_ps=int(component_templates.get("acp_cache_endpoint_processing_delay_ps", 0)),
         )
 

@@ -28,8 +28,12 @@ def build_algorithm(name: str):
         return ShortestPathOnDemand()
     if name == "ucp":
         return AdaptiveContinuous(cache_strategy="freshest", update_prob=False, algorithm_name="ucp")
+    if name == "ucp_purify":
+        return AdaptiveContinuous(cache_strategy="freshest", update_prob=False, purify=True, algorithm_name="ucp_purify")
     if name == "acp_freshest":
         return AdaptiveContinuous(cache_strategy="freshest")
+    if name == "acp_purify":
+        return AdaptiveContinuous(cache_strategy="freshest", purify=True, algorithm_name="acp_purify")
     if name == "acp_random":
         return AdaptiveContinuous(cache_strategy="random")
     raise ValueError(name)
