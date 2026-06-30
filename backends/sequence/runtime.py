@@ -78,6 +78,7 @@ class SequenceRuntime:
         max_memory = {}
         memory_high_watermark = {}
         probability_tables = {}
+        probability_history_by_node = {}
         probability_updates_by_node = {}
         cached_inventory = set()
         lifecycle_events = []
@@ -93,6 +94,7 @@ class SequenceRuntime:
                 ("None" if key is None else key): value
                 for key, value in acp.probability_table.items()
             }
+            probability_history_by_node[router.name] = acp.probability_history
             for pair in acp.generated_entanglement_pairs:
                 cached_inventory.add(self._canonical_pair(pair))
             lifecycle_events.extend(acp.lifecycle_events)
@@ -105,6 +107,7 @@ class SequenceRuntime:
             "adaptive_memory_high_watermark_by_node": memory_high_watermark,
             "probability_updates_by_node": probability_updates_by_node,
             "probability_tables": probability_tables,
+            "probability_history_by_node": probability_history_by_node,
             "normalized_counters": normalized,
             "lifecycle_events": lifecycle_events,
         }

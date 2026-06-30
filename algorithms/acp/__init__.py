@@ -17,14 +17,15 @@ class AdaptiveContinuous(RoutingAlgorithm):
     period_ps: int = 100_000_000_000
     delta: float = 0.05
     background_enabled: bool = True
+    algorithm_name: str | None = None
     config: AlgorithmConfig = None
 
     def __post_init__(self):
         if self.cache_strategy not in {"freshest", "random"}:
             raise ValueError(f"Unsupported ACP cache strategy: {self.cache_strategy}")
-        name = f"acp_{self.cache_strategy}"
-        object.__setattr__(self, "config", AlgorithmConfig(name=name, kind="acp"))
+        name = self.algorithm_name or f"acp_{self.cache_strategy}"
+        kind = "ucp" if name == "ucp" else "acp"
+        object.__setattr__(self, "config", AlgorithmConfig(name=name, kind=kind))
 
     def run(self, runtime, workload):
         return runtime.run_single_pair(workload, self)
-

@@ -77,11 +77,13 @@ class AdaptiveContinuousProtocol(Protocol):
         self.generated_entanglement_pairs: set[tuple] = set()
         self.generated_pair_metadata: dict[tuple, dict] = {}
         self.path_feedback: list[tuple[int, list[str]]] = []
+        self.probability_history: list[dict] = []
         self.counters = Counter()
         self.lifecycle_events: list[dict] = []
 
     def init(self) -> None:
         self.init_probability_table()
+        self._snapshot_probability_table(0, "init", [], update_applied=False)
         self._schedule_start(0)
 
     def init_probability_table(self) -> None:
@@ -272,9 +274,11 @@ class AdaptiveContinuousProtocol(Protocol):
         timestamp = self.owner.timeline.now() if timestamp is None else timestamp
         self.path_feedback.append((timestamp, list(path)))
         if not self.update_prob:
+            self._snapshot_probability_table(timestamp, "path_feedback", path, update_applied=False)
             return
         this = self.owner.name
         if this not in path:
+            self._snapshot_probability_table(timestamp, "path_feedback", path, update_applied=False)
             return
         index = path.index(this)
         neighbors = set()
@@ -293,6 +297,19 @@ class AdaptiveContinuousProtocol(Protocol):
         for neighbor in list(self.probability_table):
             self.probability_table[neighbor] /= total
         self.counters["probability_updates"] += 1
+        self._snapshot_probability_table(timestamp, "path_feedback", path, update_applied=updated)
 
     def send_path_feedback(self, node: str, path: list[str], timestamp: int) -> None:
         self.owner.send_message(node, ACPMessage(ACPMsgType.PATH_FEEDBACK, path=path, timestamp=timestamp))
+
+    def _snapshot_probability_table(self, timestamp: int, event: str, path: list[str], update_applied: bool) -> None:
+        self.probability_history.append({
+            "time_ps": timestamp,
+            "event": event,
+            "path": list(path),
+            "update_applied": update_applied,
+            "table": {
+                ("None" if key is None else key): value
+                for key, value in self.probability_table.items()
+            },
+        })

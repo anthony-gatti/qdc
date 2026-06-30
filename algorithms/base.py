@@ -9,7 +9,7 @@ from typing import Literal
 from results import BackendResult
 
 
-AlgorithmKind = Literal["odo", "acp"]
+AlgorithmKind = Literal["odo", "acp", "ucp"]
 
 
 @dataclass(frozen=True)
@@ -30,4 +30,3 @@ class RoutingAlgorithm(ABC):
     @abstractmethod
     def run(self, runtime, workload) -> BackendResult:
         """Run this algorithm through the supplied runtime."""
-

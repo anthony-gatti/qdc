@@ -26,6 +26,8 @@ from workloads.paper_scenario import PaperScenarioWorkload
 def build_algorithm(name: str):
     if name == "odo":
         return ShortestPathOnDemand()
+    if name == "ucp":
+        return AdaptiveContinuous(cache_strategy="freshest", update_prob=False, algorithm_name="ucp")
     if name == "acp_freshest":
         return AdaptiveContinuous(cache_strategy="freshest")
     if name == "acp_random":
@@ -37,7 +39,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--scenario", choices=sorted(SCENARIOS), default="bottleneck20")
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--algorithms", nargs="+", default=["odo", "acp_freshest", "acp_random"])
+    parser.add_argument("--algorithms", nargs="+", default=["odo", "ucp", "acp_freshest", "acp_random"])
     parser.add_argument("--seeds", type=int, default=1)
     parser.add_argument("--seed-offset", type=int, default=0)
     args = parser.parse_args()

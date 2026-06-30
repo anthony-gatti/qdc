@@ -25,6 +25,8 @@ from topology import CLASSICAL_TIMING_ACP_PAPER, CLASSICAL_TIMING_SEQUENCE
 def build_algorithm(name: str):
     if name == "odo":
         return ShortestPathOnDemand()
+    if name == "ucp":
+        return AdaptiveContinuous(cache_strategy="freshest", update_prob=False, algorithm_name="ucp")
     if name == "acp_freshest":
         return AdaptiveContinuous(cache_strategy="freshest")
     if name == "acp_random":
