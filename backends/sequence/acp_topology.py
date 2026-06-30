@@ -267,7 +267,7 @@ class ACPResourceManager(ResourceManager):
             ordered = list(sorted(candidates))
             left_node.get_generator().shuffle(ordered)
         else:
-            ordered = sorted(candidates, key=left_acp.get_fidelity, reverse=True)
+            ordered = sorted(candidates, key=left_acp.cache_candidate_key, reverse=True)
 
         right_acp = getattr(right_node, "adaptive_continuous", None)
         for pair in ordered:

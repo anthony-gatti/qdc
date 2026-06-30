@@ -244,7 +244,15 @@ class AdaptiveContinuousProtocol(Protocol):
         if self.strategy == "random":
             index = int(self.owner.get_generator().integers(0, len(candidates)))
             return sorted(candidates)[index]
-        return max(candidates, key=self.get_fidelity)
+        return max(candidates, key=self.cache_candidate_key)
+
+    def cache_candidate_key(self, pair: tuple) -> tuple:
+        metadata = self.generated_pair_metadata.get(pair, {})
+        return (
+            self.get_fidelity(pair),
+            metadata.get("generation_time_ps", 0),
+            pair,
+        )
 
     def get_fidelity(self, pair: tuple) -> float:
         memory = self.owner.timeline.get_entity_by_name(pair[0][1])
