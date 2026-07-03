@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from sequence.entanglement_management.generation import EntanglementGenerationA
+from sequence.entanglement_management.generation.single_heralded import SingleHeraldedA
 from sequence.entanglement_management.purification.bbpssw_bds import BBPSSW_BDS
 from sequence.entanglement_management.purification.bbpssw_protocol import BBPSSWProtocol
 from sequence.entanglement_management.purification.bbpssw_protocol import BBPSSWMsgType
@@ -32,6 +33,62 @@ from sequence.topology.router_net_topo import RouterNetTopo
 from sequence.topology.topology import Topology as Topo
 
 from backends.sequence.acp_protocol import ACPMessage, ACPMsgType, AdaptiveContinuousProtocol, AdaptiveReservation
+
+
+class ACPReuseSingleHeraldedA(SingleHeraldedA):
+    """Single-heralded EG that lets ACP cache replace app photon generation."""
+
+    def start(self) -> None:
+        if self._try_application_cache_reuse():
+            return
+        super().start()
+
+    def _try_application_cache_reuse(self) -> bool:
+        if not self.primary or self.ent_round != 0:
+            return False
+        if getattr(self, "cache_reuse_attempted", False):
+            return False
+        reservation = getattr(getattr(self, "rule", None), "reservation", None)
+        if reservation is None or isinstance(reservation, AdaptiveReservation):
+            return False
+        resource_manager = getattr(self.owner, "resource_manager", None)
+        acp = getattr(self.owner, "adaptive_continuous", None)
+        if resource_manager is None or acp is None:
+            return False
+        right_node = self.owner.timeline.get_entity_by_name(self.remote_node_name)
+        if right_node is None or not hasattr(right_node, "adaptive_continuous"):
+            return False
+        if resource_manager._cache_edge_satisfied(reservation, self.owner.name, right_node.name):
+            acp.counters["cache_protocol_boundary_edge_already_satisfied"] += 1
+            return True
+        try:
+            left_target_index = self.owner.components[self.owner.memo_arr_name].memory_name_to_index[self.memory.name]
+            right_target_index = right_node.components[right_node.memo_arr_name].memory_name_to_index[self.remote_memo_id]
+        except (AttributeError, KeyError):
+            return False
+
+        acp.counters["cache_protocol_boundary_checks"] += 1
+        requested = resource_manager._request_cached_pair(
+            right_node,
+            left_target_index,
+            right_target_index,
+            reservation,
+        )
+        if requested:
+            self.cache_reuse_attempted = True
+            acp.counters["cache_protocol_boundary_requests"] += 1
+            acp.lifecycle_events.append({
+                "event": "cache_protocol_boundary_request",
+                "time_ps": self.owner.timeline.now(),
+                "reservation": reservation.identity,
+                "left": self.owner.name,
+                "right": right_node.name,
+                "left_target_index": left_target_index,
+                "right_target_index": right_target_index,
+            })
+            return True
+        acp.counters["cache_protocol_boundary_misses"] += 1
+        return False
 
 
 class ACPBackgroundPurification(BBPSSW_BDS):
@@ -62,6 +119,27 @@ def eg_rule_action_await_adaptive(memories_info: list[MemoryInfo], args: Argumen
 
 def eg_rule_action_request_adaptive(memories_info: list[MemoryInfo], args: Arguments):
     return eg_rule_action_request(memories_info, args)
+
+
+def eg_rule_action_await_acp_app(memories_info: list[MemoryInfo], args: Arguments):
+    memories = [info.memory for info in memories_info]
+    memory = memories[0]
+    mid = args["mid"]
+    path = args["path"]
+    index = args["index"]
+    protocol = ACPReuseSingleHeraldedA(None, f"EGA.{memory.name}", mid, path[index - 1], memory)
+    return protocol, [None], [None], [None]
+
+
+def eg_rule_action_request_acp_app(memories_info: list[MemoryInfo], args: Arguments):
+    memories = [info.memory for info in memories_info]
+    memory = memories[0]
+    mid = args["mid"]
+    path = args["path"]
+    index = args["index"]
+    protocol = ACPReuseSingleHeraldedA(None, f"EGA.{memory.name}", mid, path[index + 1], memory)
+    req_args = {"name": args["name"], "reservation": args["reservation"]}
+    return protocol, [path[index + 1]], [eg_match_func], [req_args]
 
 
 def eg_match_func_adaptive(protocols, args):
@@ -105,6 +183,7 @@ class ACPResourceManager(ResourceManager):
         self.memory_manager = ACPMemoryManager(owner.components[memory_array_name])
         self.memory_manager.set_resource_manager(self)
         self.cache_satisfied_reservations: set[int] = set()
+        self.cache_satisfied_edges: set[tuple[int, tuple[str, str]]] = set()
 
     def generate_load_rules(self, path: list[str], reservation: Reservation, timecards: list, memory_array_name: str):
         if isinstance(reservation, AdaptiveReservation):
@@ -144,7 +223,7 @@ class ACPResourceManager(ResourceManager):
         if index > 0:
             rules.append(Rule(
                 10,
-                eg_rule_action_await,
+                eg_rule_action_await_acp_app,
                 eg_rule_condition,
                 {"mid": self.owner.map_to_middle_node[path[index - 1]], "path": path, "index": index},
                 {"memory_indices": memory_indices[:reservation.memory_size]},
@@ -153,7 +232,7 @@ class ACPResourceManager(ResourceManager):
             selected = memory_indices[:reservation.memory_size] if index == 0 else memory_indices[reservation.memory_size:]
             rules.append(Rule(
                 10,
-                eg_rule_action_request,
+                eg_rule_action_request_acp_app,
                 eg_rule_condition,
                 {
                     "mid": self.owner.map_to_middle_node[path[index + 1]],
@@ -237,6 +316,9 @@ class ACPResourceManager(ResourceManager):
     def _request_cached_pair(self, right_node, left_target_index: int, right_target_index: int, reservation: Reservation) -> int:
         left_acp = self.owner.adaptive_continuous
         now = self.owner.timeline.now()
+        if self._cache_edge_satisfied(reservation, self.owner.name, right_node.name):
+            left_acp.counters["cache_edge_already_satisfied"] += 1
+            return 0
         left_acp.lifecycle_events.append({
             "event": "cache_check",
             "time_ps": now,
@@ -249,7 +331,7 @@ class ACPResourceManager(ResourceManager):
         if pair is None:
             return 0
         left_target = self.owner.components[self.owner.memo_arr_name][left_target_index]
-        if not self._target_raw(self.owner, left_target):
+        if not self._target_cache_adoptable(self.owner, left_target, reservation):
             return 0
         left_acp.lifecycle_events.append({
             "event": "cache_pair_selected",
@@ -323,7 +405,7 @@ class ACPResourceManager(ResourceManager):
         )
         if answer:
             right_target = self.owner.components[self.owner.memo_arr_name][msg.right_target_index]
-            answer = self._target_raw(self.owner, right_target)
+            answer = self._target_cache_adoptable(self.owner, right_target, reservation)
         if not answer:
             acp.counters["cache_coordination_requests_rejected"] += 1
         acp.lifecycle_events.append({
@@ -359,6 +441,7 @@ class ACPResourceManager(ResourceManager):
             "from": src,
         })
         if not msg.answer:
+            self._resume_generation_after_cache_response(src, msg)
             return
         self.owner.timeline.schedule(Event(
             self.owner.timeline.now() + self._cache_endpoint_processing_delay(),
@@ -374,21 +457,31 @@ class ACPResourceManager(ResourceManager):
         left_node = self.owner
         right_node = self.owner.timeline.get_entity_by_name(right_name)
         if right_node is None:
+            self._resume_generation_after_cache_response(right_name, msg)
             return 0
         left_acp = left_node.adaptive_continuous
         right_acp = getattr(right_node, "adaptive_continuous", None)
         right_pair = (pair[1], pair[0])
         if pair not in left_acp.generated_entanglement_pairs:
+            self._resume_generation_after_cache_response(right_name, msg)
             return 0
         if right_acp is None or right_pair not in right_acp.generated_entanglement_pairs:
+            self._resume_generation_after_cache_response(right_name, msg)
             return 0
         if not self._candidate_valid(pair, left_node, right_node, reservation):
+            self._resume_generation_after_cache_response(right_name, msg)
+            return 0
+        if self._cache_edge_satisfied(reservation, left_node.name, right_node.name):
             return 0
         left_bg = left_node.timeline.get_entity_by_name(pair[0][1])
         right_bg = right_node.timeline.get_entity_by_name(pair[1][1])
         left_target = left_node.components[left_node.memo_arr_name][msg.left_target_index]
         right_target = right_node.components[right_node.memo_arr_name][msg.right_target_index]
-        if not self._target_raw(left_node, left_target) or not self._target_raw(right_node, right_target):
+        if (
+            not self._target_cache_adoptable(left_node, left_target, reservation)
+            or not self._target_cache_adoptable(right_node, right_target, reservation)
+        ):
+            self._resume_generation_after_cache_response(right_name, msg)
             return 0
 
         left_meta = dict(left_acp.generated_pair_metadata.get(pair, {}))
@@ -400,6 +493,15 @@ class ACPResourceManager(ResourceManager):
         self._mark_adopted(right_node, right_target, left_node.name, left_target.name, reservation, left_meta)
         left_node.resource_manager.cache_satisfied_reservations.add(id(reservation))
         right_node.resource_manager.cache_satisfied_reservations.add(id(reservation))
+        left_node.resource_manager._mark_cache_edge_satisfied(reservation, left_node.name, right_node.name)
+        right_node.resource_manager._mark_cache_edge_satisfied(reservation, left_node.name, right_node.name)
+        retired_protocols = self._retire_application_generation_protocols(
+            left_node,
+            left_target,
+            right_node,
+            right_target,
+            reservation,
+        )
         left_acp.lifecycle_events.append({
             "event": "cache_ownership_transferred",
             "time_ps": left_node.timeline.now(),
@@ -410,6 +512,9 @@ class ACPResourceManager(ResourceManager):
         if len(getattr(reservation, "path", [])) <= 2:
             left_node.get_idle_memory(left_node.resource_manager.memory_manager.get_info_by_memory(left_target))
             right_node.get_idle_memory(right_node.resource_manager.memory_manager.get_info_by_memory(right_target))
+        elif retired_protocols:
+            left_node.resource_manager._activate_adopted_application_memory(left_target)
+            right_node.resource_manager._activate_adopted_application_memory(right_target)
         left_node.resource_manager.update(None, left_bg, MemoryInfo.RAW)
         right_node.resource_manager.update(None, right_bg, MemoryInfo.RAW)
         left_acp.remove_entanglement_pair(pair, reason="application")
@@ -437,6 +542,88 @@ class ACPResourceManager(ResourceManager):
             right_acp.lifecycle_events.append(dict(event, node=right_node.name))
         return 1
 
+    def _resume_generation_after_cache_response(self, right_name: str, msg: ACPMessage) -> None:
+        reservation = msg.reservation
+        if reservation is None or msg.left_target_index is None:
+            return
+        try:
+            left_target = self.owner.components[self.owner.memo_arr_name][msg.left_target_index]
+        except (KeyError, IndexError, TypeError):
+            return
+        for protocol in list(getattr(left_target, "_observers", [])):
+            if not isinstance(protocol, EntanglementGenerationA):
+                continue
+            if getattr(getattr(protocol, "rule", None), "reservation", None) != reservation:
+                continue
+            if protocol not in self.owner.protocols:
+                continue
+            acp = getattr(self.owner, "adaptive_continuous", None)
+            if acp is not None:
+                acp.counters["cache_protocol_boundary_fallbacks"] += 1
+                acp.lifecycle_events.append({
+                    "event": "cache_protocol_boundary_fallback",
+                    "time_ps": self.owner.timeline.now(),
+                    "reservation": reservation.identity,
+                    "left": self.owner.name,
+                    "right": right_name,
+                    "pair": msg.pair,
+                    "answer": bool(msg.answer),
+                })
+            self.owner.timeline.schedule(Event(
+                self.owner.timeline.now(),
+                Process(protocol, "start", []),
+                self.owner.timeline.schedule_counter,
+            ))
+            return
+
+    def _cache_edge_key(self, reservation: Reservation, left: str, right: str) -> tuple[int, tuple[str, str]]:
+        return id(reservation), tuple(sorted((left, right)))
+
+    def _cache_edge_satisfied(self, reservation: Reservation, left: str, right: str) -> bool:
+        return self._cache_edge_key(reservation, left, right) in self.cache_satisfied_edges
+
+    def _mark_cache_edge_satisfied(self, reservation: Reservation, left: str, right: str) -> None:
+        self.cache_satisfied_edges.add(self._cache_edge_key(reservation, left, right))
+
+    def _retire_application_generation_protocols(self, left_node, left_target, right_node, right_target, reservation) -> int:
+        retired = 0
+        retired += left_node.resource_manager._retire_generation_protocol_for_memory(left_target, reservation)
+        retired += right_node.resource_manager._retire_generation_protocol_for_memory(right_target, reservation)
+        if retired:
+            left_node.adaptive_continuous.counters["cache_protocol_boundary_adoptions"] += 1
+        return retired
+
+    def _retire_generation_protocol_for_memory(self, memory, reservation) -> int:
+        retired = 0
+        for protocol in list(memory._observers):
+            if not isinstance(protocol, EntanglementGenerationA):
+                continue
+            if getattr(getattr(protocol, "rule", None), "reservation", None) != reservation:
+                continue
+            for event in list(getattr(protocol, "scheduled_events", [])):
+                if event.time >= self.owner.timeline.now():
+                    self.owner.timeline.remove_event(event)
+            if protocol.rule and protocol in protocol.rule.protocols:
+                protocol.rule.protocols.remove(protocol)
+            for collection in (self.owner.protocols, self.waiting_protocols, self.pending_protocols):
+                if protocol in collection:
+                    collection.remove(protocol)
+            memory.detach(protocol)
+            retired += 1
+        if retired:
+            memory.attach(memory.memory_array)
+        return retired
+
+    def _activate_adopted_application_memory(self, memory) -> None:
+        memo_info = self.memory_manager.get_info_by_memory(memory)
+        for rule in self.rule_manager:
+            memories_info = rule.is_valid(memo_info)
+            if len(memories_info) > 0:
+                rule.do(memories_info)
+                for info in memories_info:
+                    info.to_occupied()
+                return
+
     def _candidate_valid(self, pair, left_node, right_node, reservation) -> bool:
         left_memory = left_node.timeline.get_entity_by_name(pair[0][1])
         right_memory = right_node.timeline.get_entity_by_name(pair[1][1])
@@ -452,6 +639,19 @@ class ACPResourceManager(ResourceManager):
 
     def _target_raw(self, node, memory) -> bool:
         return node.resource_manager.memory_manager.get_info_by_memory(memory).state == MemoryInfo.RAW
+
+    def _target_cache_adoptable(self, node, memory, reservation) -> bool:
+        info = node.resource_manager.memory_manager.get_info_by_memory(memory)
+        if info.state == MemoryInfo.RAW:
+            return True
+        if info.state != MemoryInfo.OCCUPIED:
+            return False
+        for protocol in getattr(memory, "_observers", []):
+            if not isinstance(protocol, EntanglementGenerationA):
+                continue
+            if getattr(getattr(protocol, "rule", None), "reservation", None) == reservation:
+                return True
+        return False
 
     def _mark_adopted(self, node, memory, remote_node, remote_memory, reservation, metadata) -> None:
         memory.entangled_memory["node_id"] = remote_node
