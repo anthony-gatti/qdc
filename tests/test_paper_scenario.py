@@ -11,7 +11,7 @@ from algorithms.acp import (
 )
 from backends.sequence.acp_protocol import AdaptiveContinuousProtocol
 from backends.sequence.runtime import SequenceRuntime
-from paper_workload import SCENARIOS, generate_requests, prepare_topology, validate_paths
+from workloads.paper_scenario_data import SCENARIOS, generate_requests, prepare_topology, validate_paths
 
 
 class PaperWorkloadTest(unittest.TestCase):

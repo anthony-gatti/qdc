@@ -1,4 +1,8 @@
-"""ACP backend using the bundled v1.0.0 integration in ``external/acp``."""
+"""Historical pre-rebuild ACP backend; retained for reference only.
+
+This module depends on the removed ``external/acp`` package. It is intentionally
+outside the supported backend registry and must not be used for current runs.
+"""
 
 import sys
 import os

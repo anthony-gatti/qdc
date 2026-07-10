@@ -7,15 +7,8 @@ hardware:
   memory_efficiency: 0.5          # photon emission success probability
   memory_coherence_time_s: 5.0    # memory T2 time (seconds)
   memories_per_node: 50           # total quantum memories per router
-  acp_memory: 6                   # memories reserved for ACP (0 = ODO only)
   gate_fidelity: 0.99
   measurement_fidelity: 0.99
-
-acp:
-  # Current evaluation variant: speculative ACP yields to active applications.
-  # Set false, or use an acp_mN_continuous backend alias, for historical-style
-  # continuous background operation. The variants must not be conflated.
-  application_priority: true
 
 workload:
   mode: "qpq"
@@ -39,7 +32,6 @@ topology:
 experiment:
   backends:
     - "odo"
-    - "acp"
   num_trials: 1
   simulation_end_time_s: 180.0
   output_dir: "output"

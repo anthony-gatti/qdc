@@ -76,7 +76,7 @@ all end-of-run counters matched live ACP reservations.
 ## Validation commands
 
 ```bash
-/home/amg671/.conda/envs/qdc/bin/python -m unittest test_paper_workload.py
+/home/amg671/.conda/envs/qdc/bin/python -m unittest discover -s tests
 
 /home/amg671/.conda/envs/qdc/bin/python experiments/run_single_pair_paper.py \
   --output /tmp/qdc_single_pair_final --requests 100 \

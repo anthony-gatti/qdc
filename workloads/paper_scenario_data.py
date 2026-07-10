@@ -95,10 +95,10 @@ def prepare_topology(scenario: str, seed: int, adaptive_memory: int,
 
 
 def _topology_source(filename: str) -> Path:
+    project_root = Path(__file__).resolve().parents[2]
     candidates = [
-        Path(__file__).parent / "external" / "acp" / "config" / filename,
-        Path(__file__).resolve().parents[1] / "docs" / "adaptive-continuous" / "config" / filename,
-        Path(__file__).resolve().parents[1] / "docs" / "acp_modified" / "config" / filename,
+        project_root / "docs" / "adaptive-continuous" / "config" / filename,
+        project_root / "docs" / "acp_modified" / "config" / filename,
     ]
     for candidate in candidates:
         if candidate.exists():

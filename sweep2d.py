@@ -1,9 +1,9 @@
 """
 2D sweep for QPQ frontier characterization.
 
-Runs the full (distance x seed) matrix for ODO and ACP, producing one unified
-CSV that feeds charts 1, 2, 3, 5, 6. Also runs a separate db-size sub-sweep
-that feeds chart 4.
+Runs the full (distance x seed) matrix for the validated QPQ ODO baseline,
+producing one unified CSV that feeds charts 1, 2, 3, 5, 6. It also runs a
+separate database-size sub-sweep for chart 4.
 
 Usage:
     python sweep2d.py --config config/default.yaml --output sweep2d_output
@@ -83,13 +83,6 @@ def run_one_cell(
     config["topology"]["qdc_node_index"] = num_nodes // 2
     config["topology"]["random_seed"] = seed
     config["workload"]["database_size_log"] = database_size_log
-    if config.get("diagnostics", {}).get("cache_lifecycle", False):
-        diag_dir = os.path.join(output_dir, "cache_lifecycle")
-        os.makedirs(diag_dir, exist_ok=True)
-        config.setdefault("diagnostics", {})["cache_lifecycle_output"] = os.path.join(
-            diag_dir,
-            f"cache_d{int(distance_km)}_n{num_nodes}_nb{database_size_log}_s{seed}_{backend_name}.json",
-        )
     if config.get("diagnostics", {}).get("application_demand", False):
         diag_dir = os.path.join(output_dir, "application_demand")
         os.makedirs(diag_dir, exist_ok=True)
@@ -296,8 +289,8 @@ def _backend_budget(backend_name: str, config: dict) -> int:
         return 0
     if name.startswith("acp_m") and name[5:].isdigit():
         return int(name[5:])
-    if name in ("acp", "acp_no_bg"):
-        return int(config.get("hardware", {}).get("acp_memory", 8))
+    if name == "acp":
+        return int(config.get("hardware", {}).get("acp_memory", 5))
     return 0
 
 
@@ -338,7 +331,6 @@ def write_manifest(
         },
         "git": {
             "qdc_commit": _git_commit(os.path.dirname(__file__)),
-            "acp_commit": _git_commit(os.path.join(os.path.dirname(__file__), "external", "acp")),
             "sequence_commit": _resolve_sequence_commit(),
         },
         "runtime": {
@@ -346,7 +338,6 @@ def write_manifest(
             "python_executable": sys.executable,
             "platform": platform.platform(),
             "pythonpath": os.environ.get("PYTHONPATH", ""),
-            "qdc_acp_dir": os.path.join(os.path.dirname(__file__), "external", "acp"),
             "qdc_sequence_dir": os.environ.get("QDC_SEQUENCE_DIR", ""),
         },
     }
@@ -486,11 +477,6 @@ def main():
     parser.add_argument("--skip-primary", action="store_true")
     parser.add_argument("--skip-dbsize", action="store_true")
     parser.add_argument(
-        "--cache-diagnostics",
-        action="store_true",
-        help="Write per-cell ACP cache lifecycle diagnostics under the output directory.",
-    )
-    parser.add_argument(
         "--demand-diagnostics",
         action="store_true",
         help="Write per-reservation application demand diagnostics under the output directory.",
@@ -507,8 +493,6 @@ def main():
         base_config = yaml.safe_load(f)
 
     base_config.setdefault("workload", {})["mode"] = "qpq"
-    if args.cache_diagnostics:
-        base_config.setdefault("diagnostics", {})["cache_lifecycle"] = True
     if args.demand_diagnostics:
         base_config.setdefault("diagnostics", {})["application_demand"] = True
 

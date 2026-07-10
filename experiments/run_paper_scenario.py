@@ -23,8 +23,8 @@ from algorithms.acp import (
 )
 from algorithms.odo import ShortestPathOnDemand
 from backends.sequence.runtime import SequenceRuntime
-from paper_workload import SCENARIOS
 from workloads.paper_scenario import PaperScenarioWorkload
+from workloads.paper_scenario_data import SCENARIOS
 
 
 def build_algorithm(name: str, execution_profile: str):

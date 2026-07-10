@@ -10,12 +10,13 @@ from topology import (
     CLASSICAL_TIMING_SEQUENCE,
     generate_linear_topology,
 )
+from workloads.base import Workload
 
 SECOND = 10**12
 
 
 @dataclass(frozen=True)
-class SinglePairPaperWorkload:
+class SinglePairPaperWorkload(Workload):
     """Two-node no-purification setup from the ACP paper validation case."""
 
     num_requests: int = 100

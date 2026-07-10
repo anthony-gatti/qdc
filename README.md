@@ -23,12 +23,12 @@ The framework measures **network-level cost only**: time-to-serve, fidelity, suc
 
 ## What's been done so far
 
-Framework and infrastructure:
+Validated QPQ/ODO baseline:
 
 - **Topology generator**: central-hop and linear topologies with parametric depth, link distance, and density.
 - **QPQ application**: SeQUeNCe `Application` subclass implementing the 2-round protocol structure with per-round deadlines and pair-arrival timestamping.
 - **Workload generator**: produces QPQ query specs with configurable client count, queries per client, inter-query timing, and database size.
-- **Backend abstraction**: each routing algorithm implements `BackendBase` and plugs into the same experiment runner.
+- **Backend abstraction**: the QPQ ODO backend plugs into the sweep runner through `BackendBase`.
 - **Sweep infrastructure**: 2D parameter sweeps over `(distance × seed)` and `(database_size × seed)` with consistent seed counts, producing a unified per-query CSV.
 - **Plotting**: six characterization charts (success-rate heatmap, TTS by distance, fidelity by hops, db-size scaling, failure decomposition, pair-arrival timeline).
 
@@ -41,27 +41,32 @@ Supported behavior on SeQUeNCe v1.0.0:
 ACP has not yet been integrated with the QPQ workload. The QPQ ACP sweep backend
 therefore fails explicitly instead of silently falling back to ODO behavior.
 
-A first round of evaluation has been run for ODO and ACP across 4 link distances (10/20/30/40 km), 7 hop counts (1–7), 4 database sizes (n = 5, 10, 15, 20), with 15 seeds per configuration. See `sweep2d_final/figures/` for results.
-
 ## Repository layout
 
 ```
 qdc/
 ├── algorithms/              # ODO and ACP algorithm configurations
-├── workloads/               # QPQ and paper single-pair workloads
-├── backends/sequence/       # SeQUeNCe runtime and ACP-aware adapter
+├── workloads/               # Workload plugins and paper-scenario data
+├── backends/
+│   ├── sequence/            # SeQUeNCe runtime and ACP-aware adapter
+│   └── odo_backend.py        # Validated QPQ ODO backend
 ├── experiments/             # Reproducible paper-validation runners
-├── metrics/                 # Shared metric package
-├── backends/                # QPQ backend interface and implementations
+├── tests/                   # Supported runtime and workload tests
+├── legacy/                  # Non-runnable pre-rebuild reference material
 ├── config/                  # YAML experiment configurations
 ├── common.py                # Time-unit constants, QPQ pair-count formulas
 ├── qpq_app.py               # SeQUeNCe Application implementing 2-round QPQ
 ├── results.py               # Result dataclasses + CSV I/O
 ├── sweep2d.py               # Experiment orchestration: 2D sweep + db-size sweep
-├── plot_all.py              # Generate all 6 charts from sweep CSVs
+├── plot.py                  # Generate all 6 charts from sweep CSVs
 ├── topology.py              # Hub-spoke and linear topology generation
 └── workload.py              # QPQ query spec generation
 ```
+
+The remaining root-level QPQ modules are the validated pre-plugin ODO baseline.
+They are active, not deprecated. Their migration into the workload and SeQUeNCe
+adapter packages should happen as a dedicated QPQ integration change, rather
+than alongside ACP compatibility work.
 
 ## Setup
 
@@ -114,28 +119,34 @@ Paper single-pair validation:
   --acp-execution-profile paper_legacy
 ```
 
-Quick run (~30 min):
+Targeted tests:
+
+```bash
+/home/amg671/.conda/envs/qdc/bin/python -m unittest discover -s tests
+```
+
+QPQ ODO pilot:
 
 ```bash
 python sweep2d.py --config config/default.yaml --output pilot_output --pilot
 python plot.py --sweep-dir pilot_output
 ```
 
-Full sweep (~17 hours, run in tmux):
+Full QPQ ODO sweep (~17 hours, run in tmux):
 
 ```bash
 python sweep2d.py --config config/default.yaml --output sweep2d_final
 python plot.py --sweep-dir sweep2d_final --output-dir sweep2d_final/figures
 ```
 
-Default sweep is 4 distances × 15 seeds × 2 backends + a database-size sub-sweep at 20 km.
+The default sweep is ODO only until ACP is integrated with QPQ. ACP paper
+validation is run through the single-pair entrypoints above.
 
 CLI flags:
 - `--num-nodes N` — topology size (default 25, gives hop depth 1–7)
 - `--seeds K` — seeds per cell (default 15)
 - `--skip-primary` / `--skip-dbsize` — run only one sweep
 - `--demand-diagnostics` — write per-reservation application demand JSON
-- `--cache-diagnostics` — write ACP cache lifecycle JSON
 
 Detailed diagnostics are stored below the output directory and do not expand
 the primary schema-v2 CSV.

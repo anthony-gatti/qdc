@@ -5,11 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from paper_workload import SCENARIOS, generate_requests, prepare_topology, validate_paths
+from workloads.base import Workload
+from workloads.paper_scenario_data import SCENARIOS, generate_requests, prepare_topology, validate_paths
 
 
 @dataclass(frozen=True)
-class PaperScenarioWorkload:
+class PaperScenarioWorkload(Workload):
     """Single-pair paper scenario, e.g. the 20-node bottleneck experiment."""
 
     scenario: str
