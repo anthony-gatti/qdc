@@ -15,6 +15,7 @@ from sequence.topology.router_net_topo import RouterNetTopo
 
 from algorithms.acp import AdaptiveContinuous
 from algorithms.odo import ShortestPathOnDemand
+from backends.sequence.acp_protocol import AdaptiveReservation
 from backends.sequence.acp_topology import ACPRouterNetTopo
 from pair_app import PairRequestApp, collect_pair_results
 
@@ -44,6 +45,7 @@ class SequenceRuntime:
                 "acp_delta": algorithm.delta,
                 "acp_background_enabled": algorithm.background_enabled,
                 "acp_purify": algorithm.purify,
+                "acp_execution_profile": algorithm.execution_profile,
             })
         elif isinstance(algorithm, ShortestPathOnDemand):
             network_topo = RouterNetTopo(topology_config)
@@ -81,6 +83,11 @@ class SequenceRuntime:
         probability_tables = {}
         probability_history_by_node = {}
         probability_updates_by_node = {}
+        counters_by_node = {}
+        background_handshake_by_node = {}
+        execution_profiles = {}
+        reservation_slots_at_end = {}
+        accounting_consistent_at_end = {}
         cached_inventory = set()
         lifecycle_events = []
         for router in network_topo.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER):
@@ -88,6 +95,7 @@ class SequenceRuntime:
             if acp is None:
                 continue
             counters.update(acp.counters)
+            counters_by_node[router.name] = dict(acp.counters)
             max_memory[router.name] = acp.adaptive_memory_used
             memory_high_watermark[router.name] = acp.counters.get("adaptive_memory_high_watermark", 0)
             probability_updates_by_node[router.name] = acp.counters.get("probability_updates", 0)
@@ -96,6 +104,27 @@ class SequenceRuntime:
                 for key, value in acp.probability_table.items()
             }
             probability_history_by_node[router.name] = acp.probability_history
+            execution_profiles[router.name] = acp.execution_profile
+            active_reservations = {
+                id(reservation)
+                for card in router.network_manager.get_timecards()
+                for reservation in card.reservations
+                if isinstance(reservation, AdaptiveReservation)
+                and reservation.end_time > router.timeline.now()
+            }
+            reservation_slots_at_end[router.name] = len(active_reservations)
+            accounting_consistent_at_end[router.name] = (
+                acp.adaptive_memory_used == len(active_reservations)
+            )
+            background_handshake_by_node[router.name] = {
+                "neighbor_selections": dict(acp.neighbor_selection_counts),
+                "requests_sent": dict(acp.background_requests_sent_by_neighbor),
+                "requests_received": dict(acp.background_requests_received_by_neighbor),
+                "requests_accepted": dict(acp.background_requests_accepted_by_neighbor),
+                "requests_rejected": dict(acp.background_requests_rejected_by_neighbor),
+                "responses_accepted": dict(acp.background_responses_accepted_by_neighbor),
+                "responses_rejected": dict(acp.background_responses_rejected_by_neighbor),
+            }
             for pair in acp.generated_entanglement_pairs:
                 cached_inventory.add(self._canonical_pair(pair))
             lifecycle_events.extend(acp.lifecycle_events)
@@ -104,6 +133,11 @@ class SequenceRuntime:
         return {
             "algorithm": algorithm_name,
             "counters": dict(counters),
+            "counters_by_node": counters_by_node,
+            "execution_profiles_by_node": execution_profiles,
+            "adaptive_reservation_slots_at_end": reservation_slots_at_end,
+            "adaptive_memory_accounting_consistent_at_end": accounting_consistent_at_end,
+            "background_handshake_by_node": background_handshake_by_node,
             "adaptive_memory_at_end": max_memory,
             "adaptive_memory_high_watermark_by_node": memory_high_watermark,
             "probability_updates_by_node": probability_updates_by_node,
@@ -123,7 +157,7 @@ class SequenceRuntime:
                 pair = event.get("pair")
                 if pair:
                     generated.add((
-                        event.get("adaptive_reservation", event.get("time_ps")),
+                        event.get("time_ps"),
                         self._canonical_pair(pair),
                     ))
             elif name == "background_pair_adopted_by_application":

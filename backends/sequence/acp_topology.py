@@ -61,6 +61,10 @@ class ACPReuseSingleHeraldedA(SingleHeraldedA):
         if resource_manager._cache_edge_satisfied(reservation, self.owner.name, right_node.name):
             acp.counters["cache_protocol_boundary_edge_already_satisfied"] += 1
             return True
+        if resource_manager._cache_edge_pending(reservation, self.owner.name, right_node.name):
+            self.cache_reuse_attempted = True
+            acp.counters["cache_protocol_boundary_waits"] += 1
+            return True
         try:
             left_target_index = self.owner.components[self.owner.memo_arr_name].memory_name_to_index[self.memory.name]
             right_target_index = right_node.components[right_node.memo_arr_name].memory_name_to_index[self.remote_memo_id]
@@ -184,31 +188,25 @@ class ACPResourceManager(ResourceManager):
         self.memory_manager.set_resource_manager(self)
         self.cache_satisfied_reservations: set[int] = set()
         self.cache_satisfied_edges: set[tuple[int, tuple[str, str]]] = set()
+        self.cache_pending_edges: set[tuple[int, tuple[str, str]]] = set()
 
     def generate_load_rules(self, path: list[str], reservation: Reservation, timecards: list, memory_array_name: str):
         if isinstance(reservation, AdaptiveReservation):
             return super().generate_load_rules(path, reservation, timecards, memory_array_name)
 
-        activation_time = reservation.start_time
         if getattr(self.owner, "adaptive_continuous", None) is not None:
             self.owner.timeline.schedule(Event(
-                activation_time,
+                reservation.start_time,
                 Process(self, "initiate_cached_pairs_for_reservation", [path, reservation, timecards, memory_array_name]),
                 -10,
             ))
-            activation_time += self._cache_coordination_delay(path)
-        self._generate_no_purification_rules(path, reservation, timecards, memory_array_name, activation_time)
-
-    def _cache_coordination_delay(self, path: list[str]) -> int:
-        delay = 0
-        for left, right in zip(path, path[1:]):
-            if left == self.owner.name and right in self.owner.cchannels:
-                delay = max(delay, int(self.owner.cchannels[right].delay))
-            elif right == self.owner.name and left in self.owner.cchannels:
-                delay = max(delay, int(self.owner.cchannels[left].delay))
-        if delay <= 0:
-            return 0
-        return 2 * delay + 2 * self._cache_endpoint_processing_delay()
+        self._generate_no_purification_rules(
+            path,
+            reservation,
+            timecards,
+            memory_array_name,
+            reservation.start_time,
+        )
 
     def _cache_endpoint_processing_delay(self) -> int:
         acp = getattr(self.owner, "adaptive_continuous", None)
@@ -319,6 +317,9 @@ class ACPResourceManager(ResourceManager):
         if self._cache_edge_satisfied(reservation, self.owner.name, right_node.name):
             left_acp.counters["cache_edge_already_satisfied"] += 1
             return 0
+        if self._cache_edge_pending(reservation, self.owner.name, right_node.name):
+            left_acp.counters["cache_edge_pending"] += 1
+            return 0
         left_acp.lifecycle_events.append({
             "event": "cache_check",
             "time_ps": now,
@@ -348,6 +349,7 @@ class ACPResourceManager(ResourceManager):
             left_target_index=left_target_index,
             right_target_index=right_target_index,
         )
+        self.cache_pending_edges.add(self._cache_edge_key(reservation, self.owner.name, right_node.name))
         self.owner.send_message(right_node.name, message)
         left_acp.counters["cache_coordination_requests_sent"] += 1
         left_acp.lifecycle_events.append({
@@ -472,6 +474,7 @@ class ACPResourceManager(ResourceManager):
             self._resume_generation_after_cache_response(right_name, msg)
             return 0
         if self._cache_edge_satisfied(reservation, left_node.name, right_node.name):
+            self._clear_cache_edge_pending(reservation, left_node.name, right_node.name)
             return 0
         left_bg = left_node.timeline.get_entity_by_name(pair[0][1])
         right_bg = right_node.timeline.get_entity_by_name(pair[1][1])
@@ -495,6 +498,7 @@ class ACPResourceManager(ResourceManager):
         right_node.resource_manager.cache_satisfied_reservations.add(id(reservation))
         left_node.resource_manager._mark_cache_edge_satisfied(reservation, left_node.name, right_node.name)
         right_node.resource_manager._mark_cache_edge_satisfied(reservation, left_node.name, right_node.name)
+        left_node.resource_manager._clear_cache_edge_pending(reservation, left_node.name, right_node.name)
         retired_protocols = self._retire_application_generation_protocols(
             left_node,
             left_target,
@@ -518,12 +522,12 @@ class ACPResourceManager(ResourceManager):
         left_node.resource_manager.update(None, left_bg, MemoryInfo.RAW)
         right_node.resource_manager.update(None, right_bg, MemoryInfo.RAW)
         left_acp.remove_entanglement_pair(pair, reason="application")
-        left_acp.adaptive_memory_used_minus_one(left_bg)
+        left_acp.counters["adaptive_memory_slots_recycled_application"] += 1
         left_acp.counters["cache_hits"] += 1
         left_acp.counters["background_pairs_reused"] += 1
         if right_acp is not None:
             right_acp.remove_entanglement_pair(right_pair, reason="application")
-            right_acp.adaptive_memory_used_minus_one(right_bg)
+            right_acp.counters["adaptive_memory_slots_recycled_application"] += 1
             right_acp.counters["background_pairs_reused"] += 1
         one_way_delay = int(left_node.cchannels[right_node.name].delay)
         event = {
@@ -546,6 +550,7 @@ class ACPResourceManager(ResourceManager):
         reservation = msg.reservation
         if reservation is None or msg.left_target_index is None:
             return
+        self._clear_cache_edge_pending(reservation, self.owner.name, right_name)
         try:
             left_target = self.owner.components[self.owner.memo_arr_name][msg.left_target_index]
         except (KeyError, IndexError, TypeError):
@@ -582,8 +587,14 @@ class ACPResourceManager(ResourceManager):
     def _cache_edge_satisfied(self, reservation: Reservation, left: str, right: str) -> bool:
         return self._cache_edge_key(reservation, left, right) in self.cache_satisfied_edges
 
+    def _cache_edge_pending(self, reservation: Reservation, left: str, right: str) -> bool:
+        return self._cache_edge_key(reservation, left, right) in self.cache_pending_edges
+
     def _mark_cache_edge_satisfied(self, reservation: Reservation, left: str, right: str) -> None:
         self.cache_satisfied_edges.add(self._cache_edge_key(reservation, left, right))
+
+    def _clear_cache_edge_pending(self, reservation: Reservation, left: str, right: str) -> None:
+        self.cache_pending_edges.discard(self._cache_edge_key(reservation, left, right))
 
     def _retire_application_generation_protocols(self, left_node, left_target, right_node, right_target, reservation) -> int:
         retired = 0
@@ -636,9 +647,6 @@ class ACPResourceManager(ResourceManager):
         if left_info.remote_node != right_node.name or right_info.remote_node != left_node.name:
             return False
         return min(left_info.fidelity, right_info.fidelity) >= reservation.fidelity
-
-    def _target_raw(self, node, memory) -> bool:
-        return node.resource_manager.memory_manager.get_info_by_memory(memory).state == MemoryInfo.RAW
 
     def _target_cache_adoptable(self, node, memory, reservation) -> bool:
         info = node.resource_manager.memory_manager.get_info_by_memory(memory)
@@ -854,7 +862,7 @@ class ACPResourceManager(ResourceManager):
         if acp is None:
             return
         if state == MemoryInfo.RAW:
-            acp.adaptive_memory_used_minus_one(memory)
+            acp.counters["adaptive_memory_slots_recycled_purification"] += 1
             if memory is protocol.kept_memo:
                 acp.counters["purification_failures"] += 1
                 acp.lifecycle_events.append({
@@ -955,6 +963,7 @@ class ACPQuantumRouter(QuantumRouter):
             background_enabled=bool(component_templates.get("acp_background_enabled", True)),
             purify=bool(component_templates.get("acp_purify", False)),
             cache_endpoint_processing_delay_ps=int(component_templates.get("acp_cache_endpoint_processing_delay_ps", 0)),
+            execution_profile=component_templates.get("acp_execution_profile", "asynchronous"),
         )
 
     def init(self):

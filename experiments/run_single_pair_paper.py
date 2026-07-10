@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the first clean ACP milestone on the two-node paper setup."""
+"""Run clean ODO and ACP variants on the two-node paper setup."""
 
 from __future__ import annotations
 
@@ -15,26 +15,30 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from algorithms.acp import AdaptiveContinuous
+from algorithms.acp import (
+    ACP_EXECUTION_PAPER_LEGACY,
+    ACP_EXECUTION_PROFILES,
+    AdaptiveContinuous,
+)
 from algorithms.odo import ShortestPathOnDemand
 from backends.sequence.runtime import SequenceRuntime
 from workloads.single_pair import SinglePairPaperWorkload
 from topology import CLASSICAL_TIMING_ACP_PAPER, CLASSICAL_TIMING_SEQUENCE
 
 
-def build_algorithm(name: str):
+def build_algorithm(name: str, execution_profile: str):
     if name == "odo":
         return ShortestPathOnDemand()
     if name == "ucp":
-        return AdaptiveContinuous(cache_strategy="freshest", update_prob=False, algorithm_name="ucp")
+        return AdaptiveContinuous(cache_strategy="freshest", update_prob=False, algorithm_name="ucp", execution_profile=execution_profile)
     if name == "ucp_purify":
-        return AdaptiveContinuous(cache_strategy="freshest", update_prob=False, purify=True, algorithm_name="ucp_purify")
+        return AdaptiveContinuous(cache_strategy="freshest", update_prob=False, purify=True, algorithm_name="ucp_purify", execution_profile=execution_profile)
     if name == "acp_freshest":
-        return AdaptiveContinuous(cache_strategy="freshest")
+        return AdaptiveContinuous(cache_strategy="freshest", execution_profile=execution_profile)
     if name == "acp_purify":
-        return AdaptiveContinuous(cache_strategy="freshest", purify=True, algorithm_name="acp_purify")
+        return AdaptiveContinuous(cache_strategy="freshest", purify=True, algorithm_name="acp_purify", execution_profile=execution_profile)
     if name == "acp_random":
-        return AdaptiveContinuous(cache_strategy="random")
+        return AdaptiveContinuous(cache_strategy="random", execution_profile=execution_profile)
     raise ValueError(name)
 
 
@@ -44,6 +48,11 @@ def main() -> None:
     parser.add_argument("--algorithms", nargs="+", default=["odo", "acp_freshest", "acp_random"])
     parser.add_argument("--requests", type=int, default=100)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--acp-execution-profile",
+        choices=ACP_EXECUTION_PROFILES,
+        default=ACP_EXECUTION_PAPER_LEGACY,
+    )
     parser.add_argument(
         "--classical-timing-profile",
         choices=[CLASSICAL_TIMING_SEQUENCE, CLASSICAL_TIMING_ACP_PAPER],
@@ -59,7 +68,7 @@ def main() -> None:
     )
     summaries = []
     for algorithm_name in args.algorithms:
-        algorithm = build_algorithm(algorithm_name)
+        algorithm = build_algorithm(algorithm_name, args.acp_execution_profile)
         runtime = SequenceRuntime(args.output / algorithm.name)
         started = time.perf_counter()
         result = algorithm.run(runtime, workload)
@@ -78,6 +87,8 @@ def main() -> None:
         diag_path.write_text(json.dumps(runtime.last_diagnostics, indent=2, sort_keys=True) + "\n")
         summary = {
             "algorithm": algorithm.name,
+            "background_purification": bool(getattr(algorithm, "purify", False)),
+            "acp_execution_profile": getattr(algorithm, "execution_profile", None),
             "requests": result.num_requests,
             "successes": result.num_success,
             "success_rate": result.success_rate,
@@ -101,8 +112,8 @@ def main() -> None:
             "request_window_s": 0.08,
             "pairs_per_request": 1,
             "application_purification": False,
-            "background_purification": False,
             "classical_timing_profile": args.classical_timing_profile,
+            "acp_execution_profile": args.acp_execution_profile,
         },
         "runs": summaries,
     }

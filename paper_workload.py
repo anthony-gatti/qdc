@@ -19,7 +19,7 @@ SCENARIOS = {
         "expected_intermediate_hops": 0,
     },
     "bottleneck20": {
-        "topology": "bottleneck_20.json", "nodes": 20, "requests": 100,
+        "topology": "bottleneck_20.json", "nodes": 20, "requests": 110,
         "matrices": [
             [("router_0", "router_11", .25), ("router_0", "router_12", .25),
              ("router_1", "router_11", .25), ("router_1", "router_12", .25)],
@@ -44,11 +44,15 @@ SCENARIOS = {
 def generate_requests(scenario: str, seed: int) -> list[tuple]:
     """Generate matched paper requests: 10 Hz, 20 ms lead, 80 ms window."""
     spec = SCENARIOS[scenario]
-    rng = random.Random(seed)
     requests = []
     half = spec["requests"] // 2
+    rng = random.Random(seed)
     for identity in range(spec["requests"]):
-        matrix = spec["matrices"][0 if len(spec["matrices"]) == 1 or identity < half else 1]
+        matrix_index = 0 if len(spec["matrices"]) == 1 or identity < half else 1
+        if matrix_index == 1 and identity == half:
+            # The archived experiment seeded each traffic-matrix phase independently.
+            rng = random.Random(seed)
+        matrix = spec["matrices"][matrix_index]
         value = rng.random()
         cumulative = 0.0
         src = dst = None

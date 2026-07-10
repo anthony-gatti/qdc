@@ -32,21 +32,28 @@ Framework and infrastructure:
 - **Sweep infrastructure**: 2D parameter sweeps over `(distance × seed)` and `(database_size × seed)` with consistent seed counts, producing a unified per-query CSV.
 - **Plotting**: six characterization charts (success-rate heatmap, TTS by distance, fidelity by hops, db-size scaling, failure decomposition, pair-arrival timeline).
 
-Supported backends on SeQUeNCe v1.0.0:
+Supported behavior on SeQUeNCe v1.0.0:
 
-- **ODO** — on-demand shortest path with no pregeneration.
-- **acp_no_bg** — the same application path through ACP infrastructure, with background work disabled.
-- **acp_m1 / acp_m6** — ACP continuous neighbor-link pregeneration with one or six adaptive memories per node and atomic cache adoption by normal reservations.
+- **QPQ ODO** — validated on-demand shortest path with no pregeneration.
+- **Single-pair ODO, UCP, and ACP** — clean algorithm/workload plugins used by the paper-validation harness.
+- **ACP background purification** — Bell-diagonal BBPSSW for cached elementary pairs in the single-pair runtime.
+
+ACP has not yet been integrated with the QPQ workload. The QPQ ACP sweep backend
+therefore fails explicitly instead of silently falling back to ODO behavior.
 
 A first round of evaluation has been run for ODO and ACP across 4 link distances (10/20/30/40 km), 7 hop counts (1–7), 4 database sizes (n = 5, 10, 15, 20), with 15 seeds per configuration. See `sweep2d_final/figures/` for results.
 
 ## Repository layout
 
 ```
-qdc_eval/
-├── backends/                # Backend interface + algorithm implementations
+qdc/
+├── algorithms/              # ODO and ACP algorithm configurations
+├── workloads/               # QPQ and paper single-pair workloads
+├── backends/sequence/       # SeQUeNCe runtime and ACP-aware adapter
+├── experiments/             # Reproducible paper-validation runners
+├── metrics/                 # Shared metric package
+├── backends/                # QPQ backend interface and implementations
 ├── config/                  # YAML experiment configurations
-├── sweep2d_final/           # Output of main 2D sweep (CSVs + figures)
 ├── common.py                # Time-unit constants, QPQ pair-count formulas
 ├── qpq_app.py               # SeQUeNCe Application implementing 2-round QPQ
 ├── results.py               # Result dataclasses + CSV I/O
@@ -59,8 +66,8 @@ qdc_eval/
 ## Setup
 
 The supported environment is Python 3.12.13 with pristine SeQUeNCe v1.0.0 at
-commit `ffd7c837`. ACP integration code is bundled under `external/acp`; there is
-no separate patched SeQUeNCe or ACP checkout.
+commit `ffd7c837`. ACP integration code is contained in `backends/sequence`;
+there is no imported historical ACP package or patched SeQUeNCe checkout.
 
 ```
 qdc_project/
@@ -77,11 +84,35 @@ QDC_PYTHON=/home/amg671/.conda/envs/qdc/bin/python
 
 The import must resolve under `/home/amg671/qdc_project/SeQUeNCe`.
 
-ACP background purification is deliberately deferred in this baseline. Normal
-application reservations still use SeQUeNCe v1.0.0's official reservation,
-generation, purification-rule, swapping, and notification architecture.
+Normal application reservations use SeQUeNCe v1.0.0's official reservation,
+single-heralded generation, Bell-diagonal purification, swapping, and
+notification architecture.
+
+ACP execution profiles are explicit:
+
+- `asynchronous` is the default algorithm profile. It updates probabilities
+  after each served path and gives each background reservation its own lifetime.
+- `paper_legacy` reproduces the archived experiment code's 100 ms windowed
+  probability updates, idle-node reward of the phantom `None` choice, and
+  period-aligned reservation expiry. The alignment is retained only for paper
+  reproduction because the paper itself describes ACP as asynchronous.
 
 ## Running experiments
+
+Paper single-pair validation:
+
+```bash
+/home/amg671/.conda/envs/qdc/bin/python experiments/run_single_pair_paper.py \
+  --output /tmp/qdc_single_pair \
+  --algorithms odo acp_freshest acp_random acp_purify
+
+/home/amg671/.conda/envs/qdc/bin/python experiments/run_paper_scenario.py \
+  --scenario bottleneck20 \
+  --output /tmp/qdc_bottleneck20 \
+  --seeds 20 \
+  --algorithms odo ucp_purify acp_purify \
+  --acp-execution-profile paper_legacy
+```
 
 Quick run (~30 min):
 

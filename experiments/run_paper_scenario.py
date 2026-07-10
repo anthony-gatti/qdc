@@ -16,26 +16,30 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from algorithms.acp import AdaptiveContinuous
+from algorithms.acp import (
+    ACP_EXECUTION_PAPER_LEGACY,
+    ACP_EXECUTION_PROFILES,
+    AdaptiveContinuous,
+)
 from algorithms.odo import ShortestPathOnDemand
 from backends.sequence.runtime import SequenceRuntime
 from paper_workload import SCENARIOS
 from workloads.paper_scenario import PaperScenarioWorkload
 
 
-def build_algorithm(name: str):
+def build_algorithm(name: str, execution_profile: str):
     if name == "odo":
         return ShortestPathOnDemand()
     if name == "ucp":
-        return AdaptiveContinuous(cache_strategy="freshest", update_prob=False, algorithm_name="ucp")
+        return AdaptiveContinuous(cache_strategy="freshest", update_prob=False, algorithm_name="ucp", execution_profile=execution_profile)
     if name == "ucp_purify":
-        return AdaptiveContinuous(cache_strategy="freshest", update_prob=False, purify=True, algorithm_name="ucp_purify")
+        return AdaptiveContinuous(cache_strategy="freshest", update_prob=False, purify=True, algorithm_name="ucp_purify", execution_profile=execution_profile)
     if name == "acp_freshest":
-        return AdaptiveContinuous(cache_strategy="freshest")
+        return AdaptiveContinuous(cache_strategy="freshest", execution_profile=execution_profile)
     if name == "acp_purify":
-        return AdaptiveContinuous(cache_strategy="freshest", purify=True, algorithm_name="acp_purify")
+        return AdaptiveContinuous(cache_strategy="freshest", purify=True, algorithm_name="acp_purify", execution_profile=execution_profile)
     if name == "acp_random":
-        return AdaptiveContinuous(cache_strategy="random")
+        return AdaptiveContinuous(cache_strategy="random", execution_profile=execution_profile)
     raise ValueError(name)
 
 
@@ -46,13 +50,18 @@ def main() -> None:
     parser.add_argument("--algorithms", nargs="+", default=["odo", "ucp", "acp_freshest", "acp_random"])
     parser.add_argument("--seeds", type=int, default=1)
     parser.add_argument("--seed-offset", type=int, default=0)
+    parser.add_argument(
+        "--acp-execution-profile",
+        choices=ACP_EXECUTION_PROFILES,
+        default=ACP_EXECUTION_PAPER_LEGACY,
+    )
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
 
     summaries = []
     for seed in range(args.seed_offset, args.seed_offset + args.seeds):
         for algorithm_name in args.algorithms:
-            algorithm = build_algorithm(algorithm_name)
+            algorithm = build_algorithm(algorithm_name, args.acp_execution_profile)
             run_dir = args.output / f"seed_{seed}" / algorithm.name
             workload = PaperScenarioWorkload(args.scenario, seed=seed, topology_output_dir=run_dir / "paper_topologies")
             runtime = SequenceRuntime(run_dir)
@@ -75,6 +84,8 @@ def main() -> None:
                 "scenario": args.scenario,
                 "seed": seed,
                 "algorithm": algorithm.name,
+                "background_purification": bool(getattr(algorithm, "purify", False)),
+                "acp_execution_profile": getattr(algorithm, "execution_profile", None),
                 "requests": result.num_requests,
                 "successes": result.num_success,
                 "success_rate": result.success_rate,
@@ -103,6 +114,7 @@ def main() -> None:
         "study": "clean ACP rebuild: archived ACP paper scenario",
         "scenario": args.scenario,
         "seeds": list(range(args.seed_offset, args.seed_offset + args.seeds)),
+        "acp_execution_profile": args.acp_execution_profile,
         "runs": summaries,
         "aggregate": aggregate,
     }

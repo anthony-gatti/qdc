@@ -62,6 +62,7 @@ class AdaptiveContinuousProtocol(Protocol):
         background_enabled: bool = True,
         purify: bool = False,
         cache_endpoint_processing_delay_ps: int = 0,
+        execution_profile: str = "asynchronous",
     ):
         super().__init__(owner, "adaptive_continuous")
         self.adaptive_max_memory = adaptive_max_memory
@@ -72,6 +73,9 @@ class AdaptiveContinuousProtocol(Protocol):
         self.background_enabled = background_enabled
         self.purify = purify
         self.cache_endpoint_processing_delay_ps = cache_endpoint_processing_delay_ps
+        if execution_profile not in {"asynchronous", "paper_legacy"}:
+            raise ValueError(f"Unsupported ACP execution profile: {execution_profile}")
+        self.execution_profile = execution_profile
         self.has_empty_neighbor = True
         self.probability_table: dict[Optional[str], float] = {}
         self.adaptive_memory_used = 0
@@ -81,11 +85,23 @@ class AdaptiveContinuousProtocol(Protocol):
         self.path_feedback: list[tuple[int, list[str]]] = []
         self.probability_history: list[dict] = []
         self.counters = Counter()
+        self.neighbor_selection_counts = Counter()
+        self.background_requests_sent_by_neighbor = Counter()
+        self.background_requests_received_by_neighbor = Counter()
+        self.background_requests_accepted_by_neighbor = Counter()
+        self.background_requests_rejected_by_neighbor = Counter()
+        self.background_responses_accepted_by_neighbor = Counter()
+        self.background_responses_rejected_by_neighbor = Counter()
         self.lifecycle_events: list[dict] = []
 
     def init(self) -> None:
         self.init_probability_table()
         self._snapshot_probability_table(0, "init", [], update_applied=False)
+        if self.execution_profile == "paper_legacy" and self.update_prob:
+            self.owner.timeline.schedule(Event(
+                self.period_ps,
+                Process(self, "update_probability_table_window", []),
+            ))
         self._schedule_start(0)
 
     def init_probability_table(self) -> None:
@@ -111,6 +127,7 @@ class AdaptiveContinuousProtocol(Protocol):
             self._schedule_start(self.period_ps // 1000)
             return
         neighbor = self.select_neighbor()
+        self.neighbor_selection_counts["None" if neighbor is None else neighbor] += 1
         if neighbor is None:
             self.counters["start_selected_none"] += 1
             self._schedule_start(self.period_ps // 100)
@@ -121,9 +138,10 @@ class AdaptiveContinuousProtocol(Protocol):
         self.counters["ac_request_sent"] += 1
         cc_delay = int(self.owner.cchannels[neighbor].delay)
         start_time = self.owner.timeline.now() + 2 * cc_delay
-        end_time = start_time + self.period_ps
+        end_time = self._background_reservation_end_time(start_time)
         reservation = AdaptiveReservation(self.owner.name, neighbor, start_time, end_time, 1, 0.5)
         if self.owner.network_manager.rsvp.schedule(reservation):
+            self.background_requests_sent_by_neighbor[neighbor] += 1
             self.owner.send_message(neighbor, ACPMessage(ACPMsgType.REQUEST, reservation))
         else:
             self.adaptive_memory_used -= 1
@@ -154,12 +172,16 @@ class AdaptiveContinuousProtocol(Protocol):
 
     def _handle_request(self, src: str, msg: ACPMessage) -> None:
         self.counters["ac_request_received"] += 1
+        self.background_requests_received_by_neighbor[src] += 1
         reservation = msg.reservation
         if reservation is None or self.adaptive_memory_used >= self.adaptive_max_memory:
+            self.background_requests_rejected_by_neighbor[src] += 1
+            self.counters["remote_rejected_memory_cap"] += 1
             self.owner.send_message(src, ACPMessage(ACPMsgType.RESPOND, reservation, answer=False))
             return
         if self.owner.network_manager.rsvp.schedule(reservation):
             self.adaptive_memory_used += 1
+            self.background_requests_accepted_by_neighbor[src] += 1
             self._record_memory_high_watermark()
             path = [src, self.owner.name]
             reservation.set_path(path)
@@ -167,6 +189,8 @@ class AdaptiveContinuousProtocol(Protocol):
             self.owner.network_manager.rsvp.load_rules_adaptive(rules, reservation)
             self.owner.send_message(src, ACPMessage(ACPMsgType.RESPOND, reservation, answer=True, path=path))
         else:
+            self.background_requests_rejected_by_neighbor[src] += 1
+            self.counters["remote_rejected_schedule"] += 1
             self.owner.send_message(src, ACPMessage(ACPMsgType.RESPOND, reservation, answer=False))
 
     def _handle_response(self, src: str, msg: ACPMessage) -> None:
@@ -176,10 +200,12 @@ class AdaptiveContinuousProtocol(Protocol):
             self._schedule_start(self.period_ps // 1000)
             return
         if not msg.answer:
+            self.background_responses_rejected_by_neighbor[src] += 1
             self.adaptive_memory_used = max(0, self.adaptive_memory_used - 1)
             self._remove_from_timecards(reservation)
             self.counters["remote_schedule_failed"] += 1
         else:
+            self.background_responses_accepted_by_neighbor[src] += 1
             reservation.set_path(msg.path)
             rules = self.owner.network_manager.rsvp.create_rules_adaptive(msg.path, reservation)
             self.owner.network_manager.rsvp.load_rules_adaptive(rules, reservation)
@@ -196,6 +222,15 @@ class AdaptiveContinuousProtocol(Protocol):
         random_delay = int(self.owner.get_generator().uniform(0, delay)) if delay else 0
         self.owner.timeline.schedule(Event(self.owner.timeline.now() + random_delay, Process(self, "start", [])))
         self.counters["start_events_scheduled"] += 1
+
+    def _background_reservation_end_time(self, start_time: int) -> int:
+        end_time = start_time + self.period_ps
+        if self.execution_profile != "paper_legacy":
+            return end_time
+        # The archived experiment used synchronized expiry epochs despite the
+        # paper describing ACP as asynchronous.
+        aligned_end = (end_time // self.period_ps) * self.period_ps
+        return aligned_end if aligned_end > start_time else aligned_end + self.period_ps
 
     def add_generated_entanglement_pair(self, pair: tuple, reservation: Reservation | None = None) -> None:
         if pair in self.generated_entanglement_pairs:
@@ -276,10 +311,11 @@ class AdaptiveContinuousProtocol(Protocol):
             return getattr(memory, "fidelity", 0.0)
 
     def adaptive_memory_used_minus_one(self, memory) -> None:
-        if memory.name not in self.adaptive_memory_names:
+        if self.adaptive_memory_used <= 0:
+            self.counters["adaptive_memory_release_underflow"] += 1
             return
-        self.adaptive_memory_names.remove(memory.name)
-        self.adaptive_memory_used = max(0, self.adaptive_memory_used - 1)
+        self.adaptive_memory_names.discard(memory.name)
+        self.adaptive_memory_used -= 1
         for pair in list(self.generated_entanglement_pairs):
             if pair[0][1] == memory.name or pair[1][1] == memory.name:
                 self.remove_entanglement_pair(pair, reason="expired")
@@ -297,16 +333,37 @@ class AdaptiveContinuousProtocol(Protocol):
         if not self.update_prob:
             self._snapshot_probability_table(timestamp, "path_feedback", path, update_applied=False)
             return
-        this = self.owner.name
-        if this not in path:
+        if self.execution_profile == "paper_legacy":
+            self._snapshot_probability_table(timestamp, "path_feedback_queued", path, update_applied=False)
+            return
+        if self.owner.name not in path:
             self._snapshot_probability_table(timestamp, "path_feedback", path, update_applied=False)
             return
-        index = path.index(this)
+        self._update_probability_table([path], timestamp, "path_feedback")
+
+    def update_probability_table_window(self) -> None:
+        now = self.owner.timeline.now()
+        paths = [
+            path for timestamp, path in self.path_feedback
+            if now - self.period_ps <= timestamp <= now
+        ]
+        self._update_probability_table(paths, now, "paper_window")
+        self.owner.timeline.schedule(Event(
+            now + self.period_ps,
+            Process(self, "update_probability_table_window", []),
+        ))
+
+    def _update_probability_table(self, paths: list[list[str]], timestamp: int, event: str) -> None:
+        this = self.owner.name
         neighbors = set()
-        if index > 0:
-            neighbors.add(path[index - 1])
-        if index < len(path) - 1:
-            neighbors.add(path[index + 1])
+        for path in paths:
+            if this not in path:
+                continue
+            index = path.index(this)
+            if index > 0:
+                neighbors.add(path[index - 1])
+            if index < len(path) - 1:
+                neighbors.add(path[index + 1])
         updated = False
         for neighbor in list(self.probability_table):
             if neighbor is not None and neighbor in neighbors:
@@ -314,11 +371,15 @@ class AdaptiveContinuousProtocol(Protocol):
                 updated = True
         if not updated and None in self.probability_table:
             self.probability_table[None] += self.delta
+            self.counters["probability_idle_none_updates"] += 1
         total = sum(self.probability_table.values())
         for neighbor in list(self.probability_table):
             self.probability_table[neighbor] /= total
         self.counters["probability_updates"] += 1
-        self._snapshot_probability_table(timestamp, "path_feedback", path, update_applied=updated)
+        if updated:
+            self.counters["probability_path_updates"] += 1
+        snapshot_path = paths[-1] if len(paths) == 1 else []
+        self._snapshot_probability_table(timestamp, event, snapshot_path, update_applied=updated)
 
     def send_path_feedback(self, node: str, path: list[str], timestamp: int) -> None:
         self.owner.send_message(node, ACPMessage(ACPMsgType.PATH_FEEDBACK, path=path, timestamp=timestamp))
