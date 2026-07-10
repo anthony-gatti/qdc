@@ -8,7 +8,9 @@ from algorithms.acp import AdaptiveContinuous
 from algorithms.odo import ShortestPathOnDemand
 from algorithms.registry import create_algorithm
 from backends.sequence.runtime import SequenceRuntime
+from common import SECOND
 from results import BackendResult, RequestResult
+from topology import generate_linear_topology
 from workloads.base import PairDelivery
 from workloads.qpq import QPQQuerySpec, QPQTransaction, QPQWorkload
 
@@ -126,6 +128,72 @@ class QPQSequenceIntegrationTest(unittest.TestCase):
             seed=42,
         )
 
+    def _purification_workload(self, gate_fidelity: float) -> QPQWorkload:
+        return QPQWorkload(
+            database_size_log=1,
+            num_clients=1,
+            queries_per_client=1,
+            round_deadline_s=0.05,
+            transaction_duration_s=0.08,
+            start_offset_s=0.01,
+            num_nodes=2,
+            qdc_node_index=1,
+            extra_mesh_edges=0,
+            inter_node_distance_m=10_000,
+            memories_per_node=10,
+            memory_efficiency=1.0,
+            gate_fidelity=gate_fidelity,
+            measurement_fidelity=gate_fidelity,
+            simulation_end_time_s=0.02,
+            seed=0,
+        )
+
+    def _multihop_cache_workload(self) -> QPQWorkload:
+        topology = generate_linear_topology(
+            3,
+            inter_node_distance_m=10_000,
+            memo_size=10,
+            adaptive_max_memory=5,
+            memory_fidelity=0.99,
+            memory_efficiency=1.0,
+            coherence_time_s=5,
+            gate_fidelity=0.99,
+            measurement_fidelity=0.99,
+            stop_time_s=0.03,
+            qdc_node_index=2,
+            encoding_type="single_heralded",
+            formalism="bell_diagonal",
+            seed=0,
+        )
+        query = QPQQuerySpec(
+            query_id=0,
+            source="router_0",
+            destination="router_2",
+            start_time_ps=int(0.01 * SECOND),
+            transaction_deadline_ps=int(0.09 * SECOND),
+            database_size_log=1,
+            fidelity_threshold=0.7,
+            round_deadline_ps=int(0.05 * SECOND),
+        )
+        return QPQWorkload(
+            database_size_log=1,
+            num_clients=1,
+            queries_per_client=1,
+            round_deadline_s=0.05,
+            transaction_duration_s=0.08,
+            start_offset_s=0.01,
+            num_nodes=3,
+            qdc_node_index=2,
+            extra_mesh_edges=0,
+            inter_node_distance_m=10_000,
+            memories_per_node=10,
+            memory_efficiency=1.0,
+            simulation_end_time_s=0.03,
+            seed=0,
+            topology_override=topology,
+            query_override=(query,),
+        )
+
     def test_odo_completes_both_rounds_with_exact_pair_counts(self):
         with tempfile.TemporaryDirectory() as directory:
             runtime = SequenceRuntime(Path(directory))
@@ -158,6 +226,9 @@ class QPQSequenceIntegrationTest(unittest.TestCase):
         self.assertGreater(row.delivered_pairs_with_background_contribution, 1)
         normalized = runtime.last_diagnostics["normalized_counters"]
         self.assertGreater(normalized["physical_background_pairs_reused"], 1)
+        # Background reservation contention must back off instead of filling
+        # the timeline with micro-polling events while all cache slots are in use.
+        self.assertLess(runtime.last_diagnostics["counters"]["start_invocations"], 2_000)
         self.assertTrue(all(runtime.last_diagnostics["adaptive_memory_accounting_consistent_at_end"].values()))
         self.assertTrue(all(
             high_water <= 5
@@ -186,6 +257,60 @@ class QPQSequenceIntegrationTest(unittest.TestCase):
             acp_runtime.last_diagnostics["normalized_counters"]["physical_background_pairs_reused"],
             0,
         )
+
+    def test_qpq_purification_skips_predicted_fidelity_loss(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = SequenceRuntime(Path(directory))
+            result = AdaptiveContinuous(
+                adaptive_max_memory=5,
+                purify=True,
+                algorithm_name="acp_purify",
+            ).run(runtime, self._purification_workload(gate_fidelity=0.99))
+
+        self.assertEqual((result.num_requests, result.num_success), (1, 1))
+        counters = runtime.last_diagnostics["counters"]
+        self.assertEqual(counters.get("purification_attempts", 0), 0)
+        self.assertGreater(counters["purification_skipped_non_improving"], 0)
+        self.assertTrue(all(runtime.last_diagnostics["adaptive_memory_accounting_consistent_at_end"].values()))
+
+    def test_qpq_purification_runs_when_predicted_to_improve_fidelity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = SequenceRuntime(Path(directory))
+            result = AdaptiveContinuous(
+                adaptive_max_memory=5,
+                purify=True,
+                algorithm_name="acp_purify",
+            ).run(runtime, self._purification_workload(gate_fidelity=1.0))
+
+        self.assertEqual((result.num_requests, result.num_success), (1, 1))
+        counters = runtime.last_diagnostics["counters"]
+        self.assertGreater(counters["purification_attempts"], 0)
+        self.assertGreater(counters["purification_successes"], 0)
+        self.assertTrue(all(runtime.last_diagnostics["adaptive_memory_accounting_consistent_at_end"].values()))
+
+    def test_multihop_qpq_reuses_cache_and_swaps_mixed_provenance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = SequenceRuntime(Path(directory))
+            result = AdaptiveContinuous(adaptive_max_memory=5).run(
+                runtime,
+                self._multihop_cache_workload(),
+            )
+
+        self.assertEqual((result.num_requests, result.num_success), (1, 1))
+        row = result.request_results[0]
+        self.assertEqual((row.round1_pairs, row.round2_pairs), (3, 3))
+        self.assertGreater(row.delivered_pairs_fully_background_supported, 0)
+        self.assertGreater(row.delivered_pairs_partially_background_supported, 0)
+        self.assertGreater(row.delivered_background_elementary_edges, 0)
+        self.assertGreater(row.delivered_fresh_elementary_edges, 0)
+        normalized = runtime.last_diagnostics["normalized_counters"]
+        self.assertGreater(normalized["physical_background_pairs_generated"], 0)
+        self.assertGreater(normalized["physical_background_pairs_reused"], 0)
+        self.assertTrue(all(runtime.last_diagnostics["adaptive_memory_accounting_consistent_at_end"].values()))
+        self.assertTrue(all(
+            high_water <= 5
+            for high_water in runtime.last_diagnostics["adaptive_memory_high_watermark_by_node"].values()
+        ))
 
     def test_unstarted_query_is_finalized_after_simulation_end(self):
         workload = replace(self._workload(), simulation_end_time_s=0.5)

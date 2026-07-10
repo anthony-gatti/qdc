@@ -34,5 +34,7 @@ experiment:
   backends:
     - "odo"
   num_trials: 1
-  simulation_end_time_s: 180.0
+  # The final default QPQ transaction deadline is 19 s.  A short tail lets
+  # finalization run without simulating unused ACP background traffic.
+  simulation_end_time_s: 20.0
   output_dir: "output"

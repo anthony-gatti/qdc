@@ -24,6 +24,12 @@ side of that boundary. In particular, ACP path feedback enters through
 `ACPRouterNetTopo.record_served_path`; the QPQ state machine does not know ACP
 exists.
 
+When ACP background purification is enabled, cached pairs use SeQUeNCe's
+Bell-diagonal BBPSSW model only when that model predicts a fidelity increase.
+With the default 0.99 local gate and measurement fidelities, purifying fresh
+0.99 link pairs is correctly skipped because the modeled local operations would
+reduce their fidelity.
+
 ## Adding a workload
 
 1. Implement a simulator-neutral `Workload` and transaction state machine.

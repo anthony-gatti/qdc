@@ -812,6 +812,19 @@ class ACPResourceManager(ResourceManager):
             or not self._background_pair_valid(remote_node, reverse_pair2)
         ):
             return
+        predicted_fidelity = self._predicted_purification_fidelity(pair, pair2)
+        current_fidelity = acp.get_fidelity(pair)
+        if predicted_fidelity <= current_fidelity:
+            acp.counters["purification_skipped_non_improving"] += 1
+            acp.lifecycle_events.append({
+                "event": "purification_skipped_non_improving",
+                "time_ps": self.owner.timeline.now(),
+                "kept_pair": pair,
+                "measured_pair": pair2,
+                "current_fidelity": current_fidelity,
+                "predicted_fidelity": predicted_fidelity,
+            })
+            return
 
         acp.remove_entanglement_pair(pair, reason="purification_input")
         acp.remove_entanglement_pair(pair2, reason="purification_input")
@@ -844,6 +857,30 @@ class ACPResourceManager(ResourceManager):
             Process(self, "start_background_purification", [local_protocol, remote_protocol]),
             self.owner.timeline.schedule_counter,
         ))
+
+    def _predicted_purification_fidelity(self, pair: tuple, pair2: tuple) -> float:
+        """Return the official BDS BBPSSW output fidelity without mutating state."""
+        kept_memory = self.owner.timeline.get_entity_by_name(pair[0][1])
+        measured_memory = self.owner.timeline.get_entity_by_name(pair2[0][1])
+        remote_node = self.owner.timeline.get_entity_by_name(pair[1][0])
+        if kept_memory is None or measured_memory is None or remote_node is None:
+            return 0.0
+        preview = ACPBackgroundPurification(
+            self.owner,
+            "ACP.BBPSSW.preview",
+            kept_memory,
+            measured_memory,
+        )
+        preview.set_others(
+            "ACP.BBPSSW.preview",
+            remote_node.name,
+            [pair[1][1], pair2[1][1]],
+        )
+        try:
+            _, output_bds = preview.purification_res()
+        except Exception:
+            return 0.0
+        return float(output_bds[0])
 
     def start_background_purification(self, local_protocol: BBPSSWProtocol, remote_protocol: BBPSSWProtocol) -> None:
         remote_node = self.owner.timeline.get_entity_by_name(local_protocol.remote_node_name)

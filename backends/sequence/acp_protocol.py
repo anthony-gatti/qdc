@@ -93,6 +93,11 @@ class AdaptiveContinuousProtocol(Protocol):
         self.background_responses_accepted_by_neighbor = Counter()
         self.background_responses_rejected_by_neighbor = Counter()
         self.lifecycle_events: list[dict] = []
+        # A full adaptive budget must not busy-poll the simulator.  Releases
+        # schedule the next refill attempt explicitly.
+        self._start_event_pending = False
+        self._retry_backoff_ps = max(1, self.period_ps // 1000)
+        self._max_retry_backoff_ps = self.period_ps
 
     def init(self) -> None:
         self.init_probability_table()
@@ -119,12 +124,12 @@ class AdaptiveContinuousProtocol(Protocol):
         assert abs(sum(self.probability_table.values()) - 1) < EPSILON
 
     def start(self) -> None:
+        self._start_event_pending = False
         self.counters["start_invocations"] += 1
         if not self.background_enabled or self.adaptive_max_memory <= 0:
             return
         if self.adaptive_memory_used >= self.adaptive_max_memory:
             self.counters["start_blocked_memory_cap"] += 1
-            self._schedule_start(self.period_ps // 1000)
             return
         neighbor = self.select_neighbor()
         self.neighbor_selection_counts["None" if neighbor is None else neighbor] += 1
@@ -147,7 +152,7 @@ class AdaptiveContinuousProtocol(Protocol):
             self.adaptive_memory_used -= 1
             self.counters["local_schedule_failed"] += 1
             self._remove_from_timecards(reservation)
-            self._schedule_start(self.period_ps // 1000)
+            self._schedule_retry()
 
     def select_neighbor(self) -> Optional[str]:
         keys = []
@@ -197,31 +202,44 @@ class AdaptiveContinuousProtocol(Protocol):
         self.counters["ac_respond_received"] += 1
         reservation = msg.reservation
         if reservation is None:
-            self._schedule_start(self.period_ps // 1000)
+            self._schedule_retry()
             return
         if not msg.answer:
             self.background_responses_rejected_by_neighbor[src] += 1
             self.adaptive_memory_used = max(0, self.adaptive_memory_used - 1)
             self._remove_from_timecards(reservation)
             self.counters["remote_schedule_failed"] += 1
+            self._schedule_retry()
         else:
             self.background_responses_accepted_by_neighbor[src] += 1
             reservation.set_path(msg.path)
             rules = self.owner.network_manager.rsvp.create_rules_adaptive(msg.path, reservation)
             self.owner.network_manager.rsvp.load_rules_adaptive(rules, reservation)
-        self._schedule_start(3 * max(1, self.period_ps // 1000))
+            self._retry_backoff_ps = max(1, self.period_ps // 1000)
+            self._schedule_start(3 * max(1, self.period_ps // 1000))
 
     def _remove_from_timecards(self, reservation: Reservation) -> None:
         for card in self.owner.network_manager.get_timecards():
             card.remove(reservation)
 
-    def _schedule_start(self, delay: int) -> None:
+    def _schedule_start(self, delay: int, *, randomize: bool = True) -> None:
         if not self.background_enabled or self.adaptive_max_memory <= 0:
             return
+        if self._start_event_pending:
+            self.counters["start_events_coalesced"] += 1
+            return
         delay = max(0, delay)
-        random_delay = int(self.owner.get_generator().uniform(0, delay)) if delay else 0
+        random_delay = int(self.owner.get_generator().uniform(0, delay)) if randomize and delay else delay
         self.owner.timeline.schedule(Event(self.owner.timeline.now() + random_delay, Process(self, "start", [])))
+        self._start_event_pending = True
         self.counters["start_events_scheduled"] += 1
+
+    def _schedule_retry(self) -> None:
+        """Retry a rejected background reservation without timeline busy-polling."""
+        delay = self._retry_backoff_ps
+        self._schedule_start(delay, randomize=False)
+        self._retry_backoff_ps = min(self._max_retry_backoff_ps, delay * 2)
+        self.counters["background_reservation_retries"] += 1
 
     def _background_reservation_end_time(self, start_time: int) -> int:
         end_time = start_time + self.period_ps
@@ -320,6 +338,12 @@ class AdaptiveContinuousProtocol(Protocol):
             if pair[0][1] == memory.name or pair[1][1] == memory.name:
                 self.remove_entanglement_pair(pair, reason="expired")
         self.counters["adaptive_memory_released"] += 1
+        # Keep ACP continuous without polling when every adaptive slot is
+        # occupied: each release triggers one coalesced refill attempt.  Do
+        # not reset remote-rejection backoff here; a local release says
+        # nothing about whether the selected remote peer has capacity.
+        if hasattr(self, "_schedule_start"):
+            self._schedule_start(0)
 
     def _record_memory_high_watermark(self) -> None:
         self.counters["adaptive_memory_high_watermark"] = max(
