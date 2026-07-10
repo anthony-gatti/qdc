@@ -4,7 +4,7 @@ Standardized result collection for QPQ evaluation backends.
 
 import csv
 import json
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, fields
 from typing import List, Dict, Any, Optional
 
 OUTPUT_SCHEMA_VERSION = "2"
@@ -87,9 +87,7 @@ class BackendResult:
         """
         if not self.request_results:
             return
-        fieldnames = ["request_id", "src", "dst", "start_time_ps",
-                      "time_to_serve_ms", "fidelity", "success",
-                      "failure_reason", "pair_arrival_ms"]
+        fieldnames = [item.name for item in fields(RequestResult)]
         with open(path, 'w', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()

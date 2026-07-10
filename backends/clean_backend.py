@@ -2,20 +2,18 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
-from algorithms.acp import AdaptiveContinuous
-from algorithms.odo import ShortestPathOnDemand
+from algorithms.registry import create_algorithm
 from backends.base import BackendBase
 from backends.sequence.runtime import SequenceRuntime
+from workloads.qpq import QPQWorkload
 from workloads.single_pair import SinglePairPaperWorkload
 
 
 class CleanAlgorithmBackend(BackendBase):
-    """Adapter for existing backend registry callers.
-
-    This milestone supports the paper single-pair workload only.
-    """
+    """Adapter allowing the legacy sweep shell to use the clean runtime."""
 
     def __init__(self, algorithm_name: str, adaptive_max_memory: int = 5, name_override: str | None = None):
         self.algorithm_name = algorithm_name
@@ -32,23 +30,34 @@ class CleanAlgorithmBackend(BackendBase):
 
     def run(self, topo_json_path: str, request_queue: list, config: dict):
         mode = config.get("workload", {}).get("mode", "single_pair")
-        if mode not in {"pair", "single_pair"}:
-            raise NotImplementedError("CleanAlgorithmBackend currently supports only the single-pair milestone.")
-        requests = len(request_queue) if request_queue else config.get("paper_comparison", {}).get("requests", 100)
-        workload = SinglePairPaperWorkload(
-            num_requests=requests,
-            seed=config.get("topology", {}).get("random_seed", 0),
-        )
-        if self.algorithm_name == "odo":
-            algorithm = ShortestPathOnDemand()
-        elif self.algorithm_name in {"acp", "acp_freshest"}:
-            algorithm = AdaptiveContinuous(adaptive_max_memory=self._adaptive_max_memory, cache_strategy="freshest")
-        elif self.algorithm_name == "acp_random":
-            algorithm = AdaptiveContinuous(adaptive_max_memory=self._adaptive_max_memory, cache_strategy="random")
+        seed = int(config.get("topology", {}).get("random_seed", 0))
+        if mode == "qpq":
+            with open(topo_json_path) as source:
+                topology = json.load(source)
+            workload = QPQWorkload.from_config(
+                config,
+                seed=seed,
+                topology_override=topology,
+                query_override=request_queue,
+            )
+        elif mode in {"pair", "single_pair"}:
+            requests = len(request_queue) if request_queue else config.get("paper_comparison", {}).get("requests", 100)
+            workload = SinglePairPaperWorkload(num_requests=requests, seed=seed)
         else:
-            raise ValueError(self.algorithm_name)
-        runtime = SequenceRuntime(Path(config.get("experiment", {}).get("output_dir", "output")) / self.name)
+            raise ValueError(f"Unsupported clean workload mode: {mode}")
+
+        algorithm_options = dict(config.get("algorithm", {}))
+        algorithm_options["adaptive_max_memory"] = self._adaptive_max_memory
+        algorithm = create_algorithm(self.algorithm_name, algorithm_options)
+        experiment = config.get("experiment", {})
+        runtime_root = Path(experiment.get(
+            "runtime_output_dir",
+            Path(experiment.get("output_dir", "output")) / self.name,
+        ))
+        runtime = SequenceRuntime(runtime_root)
         result = algorithm.run(runtime, workload)
+        (runtime_root / "diagnostics.json").write_text(
+            json.dumps(runtime.last_diagnostics, indent=2, sort_keys=True) + "\n"
+        )
         result.backend_name = self.name
         return result
-

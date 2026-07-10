@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import ClassVar
 
 from workloads.base import Workload
 from workloads.paper_scenario_data import SCENARIOS, generate_requests, prepare_topology, validate_paths
@@ -12,6 +13,9 @@ from workloads.paper_scenario_data import SCENARIOS, generate_requests, prepare_
 @dataclass(frozen=True)
 class PaperScenarioWorkload(Workload):
     """Single-pair paper scenario, e.g. the 20-node bottleneck experiment."""
+
+    name: ClassVar[str] = "paper_scenario"
+    sequence_adapter: ClassVar[str] = "single_pair"
 
     scenario: str
     seed: int = 0

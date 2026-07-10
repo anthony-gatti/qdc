@@ -17,7 +17,7 @@ from algorithms.acp import AdaptiveContinuous
 from algorithms.odo import ShortestPathOnDemand
 from backends.sequence.acp_protocol import AdaptiveReservation
 from backends.sequence.acp_topology import ACPRouterNetTopo
-from pair_app import PairRequestApp, collect_pair_results
+from backends.sequence.workload_adapters import create_sequence_workload_adapter
 
 
 class SequenceRuntime:
@@ -28,7 +28,7 @@ class SequenceRuntime:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.last_diagnostics: dict = {}
 
-    def run_single_pair(self, workload, algorithm) -> object:
+    def run(self, workload, algorithm) -> object:
         self._configure_sequence()
         adaptive_memory = getattr(algorithm, "adaptive_max_memory", 0)
         topology_config = workload.topology(adaptive_memory=adaptive_memory)
@@ -52,21 +52,28 @@ class SequenceRuntime:
         else:
             raise TypeError(f"Unsupported algorithm: {algorithm!r}")
 
-        apps = {
-            router.name: PairRequestApp(router)
-            for router in network_topo.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER)
-        }
-        requests = workload.requests()
-        for request in requests:
-            identity, src, dst, start, end, memory, fidelity, pairs = request
-            apps[src].start(dst, start, end, memory, fidelity, pairs, identity)
+        workload_adapter = create_sequence_workload_adapter(
+            workload.sequence_adapter,
+            network_topo,
+            workload,
+            algorithm.name,
+            getattr(network_topo, "record_served_path", None),
+        )
+        workload_adapter.schedule()
 
         tl = network_topo.get_timeline()
         tl.init()
         tl.run()
-        result = collect_pair_results(apps, requests, algorithm.name, workload.seed)
+        workload_adapter.finalize()
+        result = workload_adapter.collect()
         self.last_diagnostics = self._collect_diagnostics(network_topo, algorithm.name)
+        self.last_diagnostics["workload"] = workload.name
+        self.last_diagnostics["workload_diagnostics"] = workload_adapter.diagnostics()
         return result
+
+    def run_single_pair(self, workload, algorithm) -> object:
+        """Compatibility alias for callers created before workload adapters."""
+        return self.run(workload, algorithm)
 
     def _configure_sequence(self) -> None:
         QuantumManager.set_global_manager_formalism(BELL_DIAGONAL_STATE_FORMALISM)
@@ -163,7 +170,11 @@ class SequenceRuntime:
             elif name == "background_pair_adopted_by_application":
                 pair = event.get("app_pair") or event.get("pair")
                 if pair:
-                    key = (event.get("reservation"), self._canonical_pair(pair))
+                    key = (
+                        event.get("time_ps"),
+                        event.get("reservation"),
+                        self._canonical_pair(pair),
+                    )
                     if key not in reused and event.get("recorded_tts_ps") is not None:
                         reuse_tts_ps.append(event["recorded_tts_ps"])
                     reused.add(key)

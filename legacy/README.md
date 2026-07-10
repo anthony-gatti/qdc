@@ -4,6 +4,10 @@
 QPQ diagnostics, and its historical configuration. It depends on the removed
 `external/acp` package and is not imported by any supported command.
 
+`pre_plugin_qpq/` contains the validated ODO-era QPQ application, workload
+generator, collector, and demand diagnostics that preceded the common workload
+and demand-service interfaces.
+
 It is retained only as historical reference. The supported ACP implementation
-is the single-pair SeQUeNCe adapter in `backends/sequence/`, driven by the
-entrypoints in `experiments/`.
+is the common SeQUeNCe runtime in `backends/sequence/`, driven by the entrypoints
+in `experiments/`.

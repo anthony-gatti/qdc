@@ -1,5 +1,5 @@
 """
-Abstract base class for QPQ evaluation backends.
+Compatibility interface for the original sweep runner.
 
 Each backend builds a SeQUeNCe simulation, runs it with a given topology
 and request queue, and returns standardized results.
@@ -36,10 +36,8 @@ class BackendBase(ABC):
 
         Args:
             topo_json_path: path to SeQUeNCe-compatible JSON topology config.
-            request_queue: list of request tuples, each containing:
-                (id, src_name, dst_name, start_time, end_time,
-                 memo_size, fidelity, entanglement_number)
-                Same format as used by ACP's demo.py / RequestAppTimeToServe.
+            request_queue: workload-specific request specifications. New
+                experiment code should use the workload registry directly.
             config: full experiment config dict (from YAML), for any
                 additional parameters the backend needs.
 

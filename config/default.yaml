@@ -11,12 +11,13 @@ hardware:
   measurement_fidelity: 0.99
 
 workload:
+  name: "qpq"
   mode: "qpq"
   database_size_log: 10
   num_clients: 10
   queries_per_client: 3
   round_deadline_s: 5.0
-  reservation_duration_s: 5.0     # was 15 — tighten so resources free sooner
+  transaction_duration_s: 5.0     # deadline for both sequential rounds
   request_period_s: 6.0           # was 1 — space out so queries don't overlap
   start_offset_s: 2.0
   fidelity_threshold: 0.7

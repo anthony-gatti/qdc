@@ -37,8 +37,8 @@ class AdaptiveContinuous(RoutingAlgorithm):
         if self.execution_profile not in ACP_EXECUTION_PROFILES:
             raise ValueError(f"Unsupported ACP execution profile: {self.execution_profile}")
         name = self.algorithm_name or f"acp_{self.cache_strategy}"
-        kind = "ucp" if name == "ucp" else "acp"
+        kind = "ucp" if name.startswith("ucp") else "acp"
         object.__setattr__(self, "config", AlgorithmConfig(name=name, kind=kind))
 
     def run(self, runtime, workload):
-        return runtime.run_single_pair(workload, self)
+        return runtime.run(workload, self)

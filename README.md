@@ -23,50 +23,43 @@ The framework measures **network-level cost only**: time-to-serve, fidelity, suc
 
 ## What's been done so far
 
-Validated QPQ/ODO baseline:
+Validated application/runtime baseline:
 
 - **Topology generator**: central-hop and linear topologies with parametric depth, link distance, and density.
-- **QPQ application**: SeQUeNCe `Application` subclass implementing the 2-round protocol structure with per-round deadlines and pair-arrival timestamping.
-- **Workload generator**: produces QPQ query specs with configurable client count, queries per client, inter-query timing, and database size.
-- **Backend abstraction**: the QPQ ODO backend plugs into the sweep runner through `BackendBase`.
+- **QPQ workload plugin**: simulator-neutral two-round transactions with per-round deadlines, exact pair accounting, pair-arrival timestamps, and finalization of unfinished queries.
+- **Common demand service**: translates application stages into native SeQUeNCe reservations and delivery callbacks without importing routing algorithms.
+- **Plugin registries**: select workloads and algorithms from configuration while preserving a shared runtime and result schema.
 - **Sweep infrastructure**: 2D parameter sweeps over `(distance × seed)` and `(database_size × seed)` with consistent seed counts, producing a unified per-query CSV.
 - **Plotting**: six characterization charts (success-rate heatmap, TTS by distance, fidelity by hops, db-size scaling, failure decomposition, pair-arrival timeline).
 
 Supported behavior on SeQUeNCe v1.0.0:
 
 - **QPQ ODO** — validated on-demand shortest path with no pregeneration.
+- **QPQ ACP** — continuous background generation, coordinated cached-pair reuse, adaptive path feedback, and normal SeQUeNCe swapping through the same QPQ definitions.
 - **Single-pair ODO, UCP, and ACP** — clean algorithm/workload plugins used by the paper-validation harness.
 - **ACP background purification** — Bell-diagonal BBPSSW for cached elementary pairs in the single-pair runtime.
-
-ACP has not yet been integrated with the QPQ workload. The QPQ ACP sweep backend
-therefore fails explicitly instead of silently falling back to ODO behavior.
 
 ## Repository layout
 
 ```
 qdc/
-├── algorithms/              # ODO and ACP algorithm configurations
-├── workloads/               # Workload plugins and paper-scenario data
+├── algorithms/              # ODO and ACP algorithm plugins and registry
+├── workloads/               # QPQ/single-pair workload plugins and registry
 ├── backends/
-│   ├── sequence/            # SeQUeNCe runtime and ACP-aware adapter
-│   └── odo_backend.py        # Validated QPQ ODO backend
-├── experiments/             # Reproducible paper-validation runners
+│   └── sequence/            # Common runtime, demand service, and adapters
+├── experiments/             # Generic and paper-validation runners
 ├── tests/                   # Supported runtime and workload tests
-├── legacy/                  # Non-runnable pre-rebuild reference material
+├── legacy/                  # Historical pre-rebuild/pre-plugin material
 ├── config/                  # YAML experiment configurations
 ├── common.py                # Time-unit constants, QPQ pair-count formulas
-├── qpq_app.py               # SeQUeNCe Application implementing 2-round QPQ
 ├── results.py               # Result dataclasses + CSV I/O
 ├── sweep2d.py               # Experiment orchestration: 2D sweep + db-size sweep
 ├── plot.py                  # Generate all 6 charts from sweep CSVs
-├── topology.py              # Hub-spoke and linear topology generation
-└── workload.py              # QPQ query spec generation
+└── topology.py              # Hub-spoke and linear topology generation
 ```
 
-The remaining root-level QPQ modules are the validated pre-plugin ODO baseline.
-They are active, not deprecated. Their migration into the workload and SeQUeNCe
-adapter packages should happen as a dedicated QPQ integration change, rather
-than alongside ACP compatibility work.
+The pre-plugin ODO/QPQ stack remains under `legacy/pre_plugin_qpq/` for
+historical result comparison. Supported commands do not import it.
 
 ## Setup
 
@@ -104,6 +97,14 @@ ACP execution profiles are explicit:
 
 ## Running experiments
 
+Matched QPQ ODO and ACP pilot:
+
+```bash
+/home/amg671/.conda/envs/qdc/bin/python experiments/run.py \
+  --config config/qpq.yaml \
+  --output /tmp/qdc_qpq
+```
+
 Paper single-pair validation:
 
 ```bash
@@ -125,10 +126,11 @@ Targeted tests:
 /home/amg671/.conda/envs/qdc/bin/python -m unittest discover -s tests
 ```
 
-QPQ ODO pilot:
+QPQ sweep pilot (select ODO and/or ACP with `--backends`):
 
 ```bash
-python sweep2d.py --config config/default.yaml --output pilot_output --pilot
+/home/amg671/.conda/envs/qdc/bin/python sweep2d.py \
+  --config config/default.yaml --output pilot_output --pilot --backends odo acp
 python plot.py --sweep-dir pilot_output
 ```
 
@@ -139,14 +141,10 @@ python sweep2d.py --config config/default.yaml --output sweep2d_final
 python plot.py --sweep-dir sweep2d_final --output-dir sweep2d_final/figures
 ```
 
-The default sweep is ODO only until ACP is integrated with QPQ. ACP paper
-validation is run through the single-pair entrypoints above.
-
 CLI flags:
 - `--num-nodes N` — topology size (default 25, gives hop depth 1–7)
 - `--seeds K` — seeds per cell (default 15)
 - `--skip-primary` / `--skip-dbsize` — run only one sweep
-- `--demand-diagnostics` — write per-reservation application demand JSON
 
 Detailed diagnostics are stored below the output directory and do not expand
 the primary schema-v2 CSV.
@@ -160,7 +158,9 @@ the primary schema-v2 CSV.
 - **EFiRAP**: entanglement fidelity-aware routing with purification.
 - **LP-based optimal baseline** for small topologies (gives an upper bound on what any heuristic could achieve).
 
-Each new algorithm should plug in via `BackendBase` and produce results in the same CSV format, so existing sweep and plotting infrastructure works unchanged.
+Each new algorithm should register in `algorithms/registry.py`, integrate at the
+SeQUeNCe runtime boundary, and produce the same result schema. Workload state
+machines should remain unchanged when algorithms are added.
 
 **Evaluation extensions**:
 
@@ -182,4 +182,4 @@ Beyond QPQ, the same QDC architecture supports other applications described in t
 - **Distributed sensing with data compression** uses QRAM to compress quantum data before transmission, reducing entanglement cost for sensor networks.
 - **Blind quantum computation** outsources computations to QDCs without revealing what is computed.
 
-Each application has its own workload characteristics (different pair counts per request, different fidelity tolerances, different concurrency patterns). The most interesting evaluation question is how routing algorithms hold up under **heterogeneous workloads** where multiple application types share the same QDC simultaneously. This requires generalizing the workload generator and adding application-specific backends, but the rest of the framework should carry over.
+Each application has its own workload characteristics (different pair counts per request, different fidelity tolerances, different concurrency patterns). The most interesting evaluation question is how routing algorithms hold up under **heterogeneous workloads** where multiple application types share the same QDC simultaneously. This requires additional workload state machines and SeQUeNCe workload adapters, while the routing algorithms and common demand/result contracts carry over.

@@ -12,8 +12,9 @@ from results import BackendResult, RequestResult
 class PairRequestApp(RequestApp):
     """Record one-pair request latency while using the normal RSVP path."""
 
-    def __init__(self, node):
+    def __init__(self, node, served_path_observer=None):
         super().__init__(node)
+        self._served_path_observer = served_path_observer
         self.time_to_serve = {}
         self.entanglement_fidelities = defaultdict(list)
         self.reservation_outcomes = {}
@@ -53,14 +54,9 @@ class PairRequestApp(RequestApp):
             return
         self._path_feedback_recorded.add(id(reservation))
         path = getattr(reservation, "path", [])
-        if not path:
+        if not path or self._served_path_observer is None:
             return
-        timestamp = self.node.timeline.now()
-        for node_name in path:
-            node = self.node.timeline.get_entity_by_name(node_name)
-            acp = getattr(node, "adaptive_continuous", None)
-            if acp is not None:
-                acp.record_served_path(path, timestamp)
+        self._served_path_observer(tuple(path), self.node.timeline.now())
 
 
 def collect_pair_results(name_to_app, requests, backend_name, seed):

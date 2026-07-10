@@ -14,5 +14,4 @@ class ShortestPathOnDemand(RoutingAlgorithm):
     config: AlgorithmConfig = AlgorithmConfig(name="odo", kind="odo")
 
     def run(self, runtime, workload):
-        return runtime.run_single_pair(workload, self)
-
+        return runtime.run(workload, self)

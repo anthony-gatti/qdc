@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import ClassVar
 
 from topology import (
     ACP_PAPER_END_NODE_PROCESSING_DELAY_PS,
@@ -18,6 +19,9 @@ SECOND = 10**12
 @dataclass(frozen=True)
 class SinglePairPaperWorkload(Workload):
     """Two-node no-purification setup from the ACP paper validation case."""
+
+    name: ClassVar[str] = "single_pair"
+    sequence_adapter: ClassVar[str] = "single_pair"
 
     num_requests: int = 100
     link_distance_m: float = 10_000.0

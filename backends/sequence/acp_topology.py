@@ -672,10 +672,15 @@ class ACPResourceManager(ResourceManager):
             "generation_time_ps": memory.qdc_generation_time_ps,
         }]
         memory.qdc_application_reservation = str(reservation)
+        memory.qdc_application_reservation_object = reservation
         info = node.resource_manager.memory_manager.get_info_by_memory(memory)
         info.to_entangled()
 
     def update(self, protocol, memory, state: str) -> None:
+        if isinstance(protocol, EntanglementSwappingA) and state == MemoryInfo.RAW:
+            self._propagate_swapping_provenance(protocol)
+        if state == MemoryInfo.RAW:
+            self._release_adopted_cache_edge(memory)
         self.memory_manager.update(memory, state)
         if isinstance(protocol, BBPSSWProtocol) and state == MemoryInfo.RAW:
             self._handle_purification_update(protocol, memory, state)
@@ -733,6 +738,51 @@ class ACPResourceManager(ResourceManager):
             "link": tuple(sorted((self.owner.name, memory.entangled_memory["node_id"]))),
             "generation_time_ps": memory.qdc_generation_time_ps,
         }]
+
+    def _release_adopted_cache_edge(self, memory) -> None:
+        reservation = getattr(memory, "qdc_application_reservation_object", None)
+        remote_name = memory.entangled_memory.get("node_id")
+        if reservation is None or remote_name is None:
+            return
+        self._clear_cache_edge_pending(reservation, self.owner.name, remote_name)
+        self.cache_satisfied_edges.discard(
+            self._cache_edge_key(reservation, self.owner.name, remote_name)
+        )
+        remote_node = self.owner.timeline.get_entity_by_name(remote_name)
+        remote_manager = getattr(remote_node, "resource_manager", None)
+        if isinstance(remote_manager, ACPResourceManager):
+            remote_manager._clear_cache_edge_pending(reservation, self.owner.name, remote_name)
+            remote_manager.cache_satisfied_edges.discard(
+                remote_manager._cache_edge_key(reservation, self.owner.name, remote_name)
+            )
+
+    def _propagate_swapping_provenance(self, protocol: EntanglementSwappingA) -> None:
+        if getattr(protocol, "qdc_provenance_propagated", False):
+            return
+        protocol.qdc_provenance_propagated = True
+        sources = []
+        for memory in (protocol.left_memo, protocol.right_memo):
+            memory_sources = list(getattr(memory, "qdc_elementary_sources", ()))
+            if memory_sources:
+                sources.extend(dict(source) for source in memory_sources)
+            else:
+                sources.append({
+                    "source": getattr(memory, "qdc_generation_source", "application"),
+                    "link": tuple(sorted((self.owner.name, memory.entangled_memory["node_id"]))),
+                })
+        background_count = sum(1 for source in sources if source.get("source") == "background")
+        if background_count == len(sources):
+            generation_source = "background"
+        elif background_count:
+            generation_source = "mixed"
+        else:
+            generation_source = "application"
+        for memory_name in (protocol.left_remote_memo, protocol.right_remote_memo):
+            remote_memory = self.owner.timeline.get_entity_by_name(memory_name)
+            if remote_memory is None:
+                continue
+            remote_memory.qdc_elementary_sources = [dict(source) for source in sources]
+            remote_memory.qdc_generation_source = generation_source
 
     def _maybe_start_background_purification(self, protocol, pair: tuple) -> None:
         acp = self.owner.adaptive_continuous
@@ -887,7 +937,13 @@ class ACPResourceManager(ResourceManager):
             })
 
     def _clear_qdc_attrs(self, memory) -> None:
-        for name in ("qdc_generation_source", "qdc_generation_time_ps", "qdc_elementary_sources", "qdc_application_reservation"):
+        for name in (
+            "qdc_generation_source",
+            "qdc_generation_time_ps",
+            "qdc_elementary_sources",
+            "qdc_application_reservation",
+            "qdc_application_reservation_object",
+        ):
             if hasattr(memory, name):
                 delattr(memory, name)
 
@@ -981,6 +1037,12 @@ class ACPRouterNetTopo(RouterNetTopo):
     def __init__(self, config_source: str | dict, acp_options: dict[str, Any] | None = None):
         self.acp_options = acp_options or {}
         super().__init__(config_source)
+
+    def record_served_path(self, path: tuple[str, ...], timestamp: int) -> None:
+        """Forward successful application-path feedback to each ACP node."""
+        for node_name in path:
+            node = self.tl.get_entity_by_name(node_name)
+            node.adaptive_continuous.record_served_path(list(path), timestamp)
 
     def _add_nodes(self, config: dict):
         for node in config[Topo.ALL_NODE]:

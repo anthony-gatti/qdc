@@ -30,9 +30,9 @@ import networkx as nx
 from topology import (
     generate_hub_spoke_topology, save_topology, validate_topology
 )
-from workload import generate_qpq_queries
 from backends.registry import get_backend
 from results import OUTPUT_SCHEMA_VERSION
+from workloads.qpq import QPQWorkload
 
 
 # ---------------------------------------------------------------------------
@@ -83,17 +83,12 @@ def run_one_cell(
     config["topology"]["qdc_node_index"] = num_nodes // 2
     config["topology"]["random_seed"] = seed
     config["workload"]["database_size_log"] = database_size_log
-    if config.get("diagnostics", {}).get("application_demand", False):
-        diag_dir = os.path.join(output_dir, "application_demand")
-        os.makedirs(diag_dir, exist_ok=True)
-        config.setdefault("diagnostics", {})["application_demand_output"] = os.path.join(
-            diag_dir,
-            f"demand_d{int(distance_km)}_n{num_nodes}_nb{database_size_log}_s{seed}_{backend_name}.json",
-        )
+    config.setdefault("experiment", {})["output_dir"] = output_dir
+    run_stem = f"d{int(distance_km)}_n{num_nodes}_nb{database_size_log}_s{seed}_{backend_name}"
+    config["experiment"]["runtime_output_dir"] = os.path.join(output_dir, "runtime", run_stem)
 
     hw = config.get("hardware", {})
     exp = config.get("experiment", {})
-    wl = config.get("workload", {})
     topo_cfg = config["topology"]
 
     qdc_name = f"router_{topo_cfg['qdc_node_index']}"
@@ -139,27 +134,20 @@ def run_one_cell(
     hop_distances = compute_hop_distances(topo_config, qdc_name)
 
     # Workload
-    router_names = [n["name"] for n in topo_config["nodes"]
-                    if n["type"] == "QuantumRouter"]
-
-    # Need enough clients to get coverage across hop depths.
-    # Default to all non-QDC routers.
-    num_clients_target = wl.get("num_clients", 10)
-    num_clients = min(num_clients_target, len(router_names) - 1)
-
-    query_specs = generate_qpq_queries(
-        router_names=router_names,
-        qdc_name=qdc_name,
-        num_clients=num_clients,
-        queries_per_client=wl.get("queries_per_client", 3),
-        database_size_log=database_size_log,
-        fidelity_threshold=wl.get("fidelity_threshold", 0.7),
-        round_deadline_s=wl.get("round_deadline_s", 5.0),
-        request_period_s=wl.get("request_period_s", 6.0),
-        start_offset_s=wl.get("start_offset_s", 2.0),
-        reservation_duration_s=wl.get("reservation_duration_s", 5.0),
-        seed=seed,
-    )
+    qpq_workload = QPQWorkload.from_config(config, seed=seed)
+    query_specs = [
+        {
+            "query_id": query.query_id,
+            "src": query.source,
+            "dst": query.destination,
+            "start_time": query.start_time_ps,
+            "end_time": query.transaction_deadline_ps,
+            "database_size_log": query.database_size_log,
+            "fidelity": query.fidelity_threshold,
+            "round_deadline_ps": query.round_deadline_ps,
+        }
+        for query in qpq_workload.queries()
+    ]
 
     # Topology JSON
     backend_topo = copy.deepcopy(topo_config)
@@ -476,11 +464,6 @@ def main():
                         help="Fast pilot: 3 seeds, 2 distances")
     parser.add_argument("--skip-primary", action="store_true")
     parser.add_argument("--skip-dbsize", action="store_true")
-    parser.add_argument(
-        "--demand-diagnostics",
-        action="store_true",
-        help="Write per-reservation application demand diagnostics under the output directory.",
-    )
     parser.add_argument("--num-nodes", type=int, default=25,
                         help="Nodes for primary sweep (default: 25, gives hops 1-7)")
     parser.add_argument("--seeds", type=int, default=15,
@@ -493,8 +476,6 @@ def main():
         base_config = yaml.safe_load(f)
 
     base_config.setdefault("workload", {})["mode"] = "qpq"
-    if args.demand_diagnostics:
-        base_config.setdefault("diagnostics", {})["application_demand"] = True
 
     exp_cfg = base_config.get("experiment", {})
     if args.backends:
