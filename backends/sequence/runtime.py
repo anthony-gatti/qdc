@@ -17,6 +17,7 @@ from algorithms.acp import AdaptiveContinuous
 from algorithms.odo import ShortestPathOnDemand
 from backends.sequence.acp_protocol import AdaptiveReservation
 from backends.sequence.acp_topology import ACPRouterNetTopo
+from backends.sequence.configured_topology import ConfiguredRouterNetTopo
 from backends.sequence.workload_adapters import create_sequence_workload_adapter
 
 
@@ -48,7 +49,7 @@ class SequenceRuntime:
                 "acp_execution_profile": algorithm.execution_profile,
             })
         elif isinstance(algorithm, ShortestPathOnDemand):
-            network_topo = RouterNetTopo(topology_config)
+            network_topo = ConfiguredRouterNetTopo(topology_config)
         else:
             raise TypeError(f"Unsupported algorithm: {algorithm!r}")
 

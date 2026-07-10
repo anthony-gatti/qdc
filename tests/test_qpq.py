@@ -107,6 +107,25 @@ class QPQSequenceIntegrationTest(unittest.TestCase):
             seed=0,
         )
 
+    def _multihop_workload(self) -> QPQWorkload:
+        return QPQWorkload(
+            database_size_log=5,
+            num_clients=2,
+            queries_per_client=1,
+            round_deadline_s=5,
+            transaction_duration_s=12,
+            start_offset_s=2,
+            num_nodes=5,
+            qdc_node_index=2,
+            extra_mesh_edges=1,
+            memories_per_node=50,
+            memory_efficiency=0.5,
+            gate_fidelity=0.99,
+            measurement_fidelity=0.99,
+            simulation_end_time_s=30,
+            seed=42,
+        )
+
     def test_odo_completes_both_rounds_with_exact_pair_counts(self):
         with tempfile.TemporaryDirectory() as directory:
             runtime = SequenceRuntime(Path(directory))
@@ -144,6 +163,29 @@ class QPQSequenceIntegrationTest(unittest.TestCase):
             high_water <= 5
             for high_water in runtime.last_diagnostics["adaptive_memory_high_watermark_by_node"].values()
         ))
+
+    def test_acp_zero_memory_matches_odo_on_multihop_fidelity(self):
+        workload = self._multihop_workload()
+        with tempfile.TemporaryDirectory() as directory:
+            odo_runtime = SequenceRuntime(Path(directory) / "odo")
+            acp_runtime = SequenceRuntime(Path(directory) / "acp_m0")
+            odo = ShortestPathOnDemand().run(odo_runtime, workload)
+            acp = AdaptiveContinuous(adaptive_max_memory=0).run(acp_runtime, workload)
+
+        self.assertEqual(odo.num_success, acp.num_success)
+        for odo_row, acp_row in zip(odo.request_results, acp.request_results):
+            self.assertEqual(odo_row.success, acp_row.success)
+            self.assertEqual(odo_row.time_to_serve_ms, acp_row.time_to_serve_ms)
+            self.assertEqual(odo_row.pair_arrival_ms, acp_row.pair_arrival_ms)
+            self.assertEqual(odo_row.fidelity, acp_row.fidelity)
+        self.assertEqual(
+            acp_runtime.last_diagnostics["normalized_counters"]["physical_background_pairs_generated"],
+            0,
+        )
+        self.assertEqual(
+            acp_runtime.last_diagnostics["normalized_counters"]["physical_background_pairs_reused"],
+            0,
+        )
 
     def test_unstarted_query_is_finalized_after_simulation_end(self):
         workload = replace(self._workload(), simulation_end_time_s=0.5)

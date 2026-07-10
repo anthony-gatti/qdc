@@ -9,7 +9,7 @@ from algorithms.base import AlgorithmConfig, RoutingAlgorithm
 
 @dataclass(frozen=True)
 class ShortestPathOnDemand(RoutingAlgorithm):
-    """Vanilla SeQUeNCe RSVP shortest-path on-demand baseline."""
+    """SeQUeNCe RSVP shortest-path on-demand baseline."""
 
     config: AlgorithmConfig = AlgorithmConfig(name="odo", kind="odo")
 
