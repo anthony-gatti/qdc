@@ -17,7 +17,6 @@ from sequence.network_management.reservation import Reservation
 from sequence.resource_management.action_condition_set import (
     eg_match_func,
     eg_rule_action_await,
-    eg_rule_action_request,
     eg_rule_condition,
     es_rule_action_A,
     es_rule_action_B,
@@ -33,6 +32,18 @@ from sequence.topology.router_net_topo import RouterNetTopo
 from sequence.topology.topology import Topology as Topo
 
 from backends.sequence.acp_protocol import ACPMessage, ACPMsgType, AdaptiveContinuousProtocol, AdaptiveReservation
+from backends.sequence.parallel_links import (
+    ParallelResourceManager,
+    configure_parallel_middle_nodes,
+    ensure_parallel_metrics,
+    middle_nodes,
+    parallel_eg_match_func,
+    parallel_eg_rule_action_request,
+    parallel_eg_rule_condition,
+    record_generation_attempt,
+    record_generation_success,
+    record_memory_occupancy,
+)
 
 
 class ACPReuseSingleHeraldedA(SingleHeraldedA):
@@ -122,7 +133,7 @@ def eg_rule_action_await_adaptive(memories_info: list[MemoryInfo], args: Argumen
 
 
 def eg_rule_action_request_adaptive(memories_info: list[MemoryInfo], args: Arguments):
-    return eg_rule_action_request(memories_info, args)
+    return parallel_eg_rule_action_request(memories_info, args)
 
 
 def eg_rule_action_await_acp_app(memories_info: list[MemoryInfo], args: Arguments):
@@ -142,8 +153,11 @@ def eg_rule_action_request_acp_app(memories_info: list[MemoryInfo], args: Argume
     path = args["path"]
     index = args["index"]
     protocol = ACPReuseSingleHeraldedA(None, f"EGA.{memory.name}", mid, path[index + 1], memory)
+    owner = memory.memory_array.owner
+    record_generation_attempt(owner, path[index + 1], mid)
     req_args = {"name": args["name"], "reservation": args["reservation"]}
-    return protocol, [path[index + 1]], [eg_match_func], [req_args]
+    req_args["mid"] = mid
+    return protocol, [path[index + 1]], [parallel_eg_match_func], [req_args]
 
 
 def eg_match_func_adaptive(protocols, args):
@@ -179,7 +193,7 @@ class ACPMemoryManager(MemoryManager):
         self.memory_map[i].entangle_time, self.memory_map[j].entangle_time = self.memory_map[j].entangle_time, self.memory_map[i].entangle_time
 
 
-class ACPResourceManager(ResourceManager):
+class ACPResourceManager(ParallelResourceManager):
     """Resource manager extension for ACP inventory and cache adoption."""
 
     def __init__(self, owner: QuantumRouter, memory_array_name: str):
@@ -219,27 +233,23 @@ class ACPResourceManager(ResourceManager):
         index = path.index(self.owner.name)
         rules = []
         if index > 0:
-            rules.append(Rule(
-                10,
-                eg_rule_action_await_acp_app,
-                eg_rule_condition,
-                {"mid": self.owner.map_to_middle_node[path[index - 1]], "path": path, "index": index},
-                {"memory_indices": memory_indices[:reservation.memory_size]},
+            rules.extend(self._application_generation_rules(
+                path[index - 1],
+                path,
+                index,
+                memory_indices[:reservation.memory_size],
+                reservation,
+                requester=False,
             ))
         if index < len(path) - 1:
             selected = memory_indices[:reservation.memory_size] if index == 0 else memory_indices[reservation.memory_size:]
-            rules.append(Rule(
-                10,
-                eg_rule_action_request_acp_app,
-                eg_rule_condition,
-                {
-                    "mid": self.owner.map_to_middle_node[path[index + 1]],
-                    "path": path,
-                    "index": index,
-                    "name": self.owner.name,
-                    "reservation": reservation,
-                },
-                {"memory_indices": selected},
+            rules.extend(self._application_generation_rules(
+                path[index + 1],
+                path,
+                index,
+                selected,
+                reservation,
+                requester=True,
             ))
         if index == 0:
             rules.append(Rule(10, es_rule_action_B, es_rule_condition_B_end, {}, {
@@ -279,6 +289,45 @@ class ACPResourceManager(ResourceManager):
             if reservation in card.reservations:
                 memory = self.owner.components[memory_array_name][card.memory_index]
                 self.owner.timeline.schedule(Event(reservation.end_time, Process(self, "update", [None, memory, MemoryInfo.RAW]), self.owner.timeline.schedule_counter))
+
+    def _application_generation_rules(
+        self,
+        neighbor,
+        path,
+        index,
+        memory_indices,
+        reservation,
+        *,
+        requester,
+    ):
+        lanes = middle_nodes(self.owner, neighbor)
+        rules = []
+        for lane_index, middle in enumerate(lanes):
+            parallel = len(lanes) > 1
+            action_args = {"mid": middle, "path": path, "index": index}
+            if requester:
+                action_args.update({
+                    "name": self.owner.name,
+                    "reservation": reservation,
+                    "parallel_lane": parallel,
+                })
+                action = eg_rule_action_request_acp_app
+            else:
+                action = eg_rule_action_await_acp_app
+            condition_args = {"memory_indices": memory_indices}
+            if parallel:
+                condition_args.update({
+                    "lane_index": lane_index,
+                    "lane_count": len(lanes),
+                })
+            rules.append(Rule(
+                10,
+                action,
+                parallel_eg_rule_condition if parallel else eg_rule_condition,
+                action_args,
+                condition_args,
+            ))
+        return rules
 
     def load_application_rule(self, rule: Rule, reservation: Reservation) -> None:
         if len(getattr(reservation, "path", [])) <= 2 and id(reservation) in self.cache_satisfied_reservations:
@@ -677,6 +726,16 @@ class ACPResourceManager(ResourceManager):
         info.to_entangled()
 
     def update(self, protocol, memory, state: str) -> None:
+        if (
+            state == MemoryInfo.ENTANGLED
+            and isinstance(protocol, EntanglementGenerationA)
+            and protocol.primary
+        ):
+            record_generation_success(
+                self.owner,
+                protocol.remote_node_name,
+                protocol.middle,
+            )
         if isinstance(protocol, EntanglementSwappingA) and state == MemoryInfo.RAW:
             self._propagate_swapping_provenance(protocol)
         if state == MemoryInfo.RAW:
@@ -709,9 +768,11 @@ class ACPResourceManager(ResourceManager):
                 rule.do(memories_info)
                 for info in memories_info:
                     info.to_occupied()
+                record_memory_occupancy(self.owner)
                 return
 
         self.owner.get_idle_memory(memo_info)
+        record_memory_occupancy(self.owner)
 
     def _mark_generation_source(self, protocol, memory, state: str) -> None:
         if isinstance(protocol, BBPSSWProtocol):
@@ -991,29 +1052,64 @@ class ACPRSVPProtocol(RSVPProtocol):
         index = path.index(self.owner.name)
         rules = []
         if index > 0:
-            rules.append(Rule(
-                20,
-                eg_rule_action_await_adaptive,
-                eg_rule_condition,
-                {"mid": self.owner.map_to_middle_node[path[index - 1]], "path": path, "index": index},
-                {"memory_indices": memory_indices[:reservation.memory_size]},
+            rules.extend(self._adaptive_generation_rules(
+                path[index - 1],
+                path,
+                index,
+                memory_indices[:reservation.memory_size],
+                reservation,
+                requester=False,
             ))
         if index < len(path) - 1:
-            rules.append(Rule(
-                10,
-                eg_rule_action_request_adaptive,
-                eg_rule_condition,
-                {
-                    "mid": self.owner.map_to_middle_node[path[index + 1]],
-                    "path": path,
-                    "index": index,
-                    "name": self.owner.name,
-                    "reservation": reservation,
-                },
-                {"memory_indices": memory_indices[:reservation.memory_size]},
+            rules.extend(self._adaptive_generation_rules(
+                path[index + 1],
+                path,
+                index,
+                memory_indices[:reservation.memory_size],
+                reservation,
+                requester=True,
             ))
         for rule in rules:
             rule.set_reservation(reservation)
+        return rules
+
+    def _adaptive_generation_rules(
+        self,
+        neighbor,
+        path,
+        index,
+        memory_indices,
+        reservation,
+        *,
+        requester,
+    ):
+        lanes = middle_nodes(self.owner, neighbor)
+        rules = []
+        for lane_index, middle in enumerate(lanes):
+            parallel = len(lanes) > 1
+            action_args = {"mid": middle, "path": path, "index": index}
+            if requester:
+                action_args.update({
+                    "name": self.owner.name,
+                    "reservation": reservation,
+                    "parallel_lane": parallel,
+                })
+                action = eg_rule_action_request_adaptive
+            else:
+                action = eg_rule_action_await_adaptive
+            condition_args = {"memory_indices": memory_indices}
+            if parallel:
+                condition_args.update({
+                    "lane_index": lane_index,
+                    "lane_count": len(lanes),
+                })
+            rules.append(Rule(
+                20 if not requester else 10,
+                action,
+                parallel_eg_rule_condition if parallel else eg_rule_condition,
+                action_args,
+                condition_args,
+            ))
         return rules
 
     def load_rules_adaptive(self, rules: list[Rule], reservation: AdaptiveReservation) -> None:
@@ -1024,6 +1120,7 @@ class ACPRSVPProtocol(RSVPProtocol):
                 memory = self.memo_arr[card.memory_index]
                 acp.adaptive_memory_names.add(memory.name)
                 self.owner.timeline.schedule(Event(reservation.end_time, Process(self.owner.resource_manager, "update", [None, memory, MemoryInfo.RAW]), self.owner.timeline.schedule_counter))
+
                 self.owner.timeline.schedule(Event(reservation.end_time, Process(acp, "adaptive_memory_used_minus_one", [memory]), self.owner.timeline.schedule_counter))
         for rule in rules:
             self.owner.timeline.schedule(Event(reservation.start_time, Process(self.owner.resource_manager, "load", [rule]), self.owner.timeline.schedule_counter))
@@ -1035,6 +1132,7 @@ class ACPQuantumRouter(QuantumRouter):
         component_templates = component_templates or {}
         super().__init__(name, tl, memo_size, seed, component_templates, gate_fid, meas_fid)
         self.resource_manager = ACPResourceManager(self, self.memo_arr_name)
+        ensure_parallel_metrics(self)
         old_rsvp = self.network_manager.rsvp
         rsvp = ACPRSVPProtocol(self, f"{self.name}.RSVP", self.memo_arr_name)
         rsvp.timecards = self.network_manager.timecards
@@ -1105,3 +1203,7 @@ class ACPRouterNetTopo(RouterNetTopo):
                 raise ValueError(f"Unknown type of node '{node_type}'")
             node_obj.set_seed(seed)
             self.nodes[node_type].append(node_obj)
+
+    def _add_bsm_node_to_router(self) -> None:
+        super()._add_bsm_node_to_router()
+        configure_parallel_middle_nodes(self)

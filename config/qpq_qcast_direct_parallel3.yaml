@@ -1,15 +1,15 @@
 experiment:
   algorithms: [odo, acp_freshest, qcast]
   seeds: [0, 1, 2]
-  simulation_end_time_s: 1.6
+  simulation_end_time_s: 1.1
 
 workload:
   name: qpq
-  database_size_log: 2
-  num_clients: 3
+  database_size_log: 1
+  num_clients: 1
   queries_per_client: 1
-  round_deadline_s: 0.8
-  transaction_duration_s: 1.5
+  round_deadline_s: 0.5
+  transaction_duration_s: 1.0
   request_period_s: 1.0
   start_offset_s: 0.03
   fidelity_threshold: 0.7
@@ -19,15 +19,16 @@ algorithm:
   cache_strategy: freshest
   purification: false
   execution_profile: asynchronous
-  edge_width: 1
+  # Three lanes are schedulable, but this topology has only one router path.
+  edge_width: 3
   generation_window_s: 0.005
   control_processing_delay_s: 0.0001
   swap_success_probability: 0.9
-  link_state_hops: 3
+  link_state_hops: 2
   recovery_paths_per_segment: 1
-  max_recovery_paths_per_major: 12
-  max_major_paths: 30
-  max_hops: 8
+  max_recovery_paths_per_major: 4
+  max_major_paths: 8
+  max_hops: 2
 
 hardware:
   link_fidelity: 0.99
@@ -37,12 +38,12 @@ hardware:
   gate_fidelity: 0.99
   measurement_fidelity: 0.99
   swapping_success_probability: 0.9
-  link_parallelism: 1
+  link_parallelism: 3
 
 topology:
   type: hub_spoke
-  num_nodes: 5
+  num_nodes: 2
   inter_node_distance_m: 20000.0
-  qdc_node_index: 2
+  qdc_node_index: 1
   random_seed: 0
-  extra_mesh_edges: 3
+  extra_mesh_edges: 0

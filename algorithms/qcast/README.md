@@ -31,11 +31,11 @@ SeQUeNCe-independent planner and a SeQUeNCe execution adapter.
 ## SeQUeNCe boundary
 
 `backends/sequence/qcast_topology.py` supplies an ACP-free router subclass with
-a Q-CAST control protocol. It also expands each router link into `edge_width`
-independent midpoint BSM and optical-channel lanes. This is necessary because
-the paper's EXT calculation assumes independent parallel channels. The
-expansion is used only by Q-CAST and does not modify upstream SeQUeNCe or the
-ODO/ACP topologies.
+a Q-CAST control protocol. Physical parallelism is a shared workload hardware
+parameter, `hardware.link_parallelism`; the common SeQUeNCe adapter expands all
+algorithms' router links into that many independent midpoint BSM/channel lanes.
+Q-CAST's `edge_width` is only a path-scheduling cap over the shared lanes. It
+does not create hardware.
 
 `backends/sequence/qcast_scheduler.py` owns slot timing, physical lane
 allocation, control messages, rule installation, recovery selection, and swap
@@ -58,6 +58,7 @@ sequencing. The workload sees only the shared demand/callback contract.
   QPQ, the QDC router controls Q-CAST slots while each query retains its client
   and QDC endpoints. Round two is submitted only after the exact round-one pair
   quota is delivered; round and transaction deadlines remain workload-owned.
-- Width greater than one creates additional physical midpoint BSM/channel
-  lanes only for Q-CAST. Cross-algorithm comparisons should use width one until
-  ODO and ACP share a multi-channel topology adapter.
+- ODO, ACP, and Q-CAST share the same `hardware.link_parallelism` topology.
+  Native RSVP still has different scheduling semantics from Q-CAST slots, so
+  comparisons measure algorithms under equal physical lanes rather than an
+  identical control plane.

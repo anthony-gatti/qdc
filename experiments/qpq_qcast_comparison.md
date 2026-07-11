@@ -1,79 +1,114 @@
-# QPQ algorithm comparison
+# QPQ Shared-Link-Parallelism Pilot
 
-These are diagnostic comparisons, not paper-scale performance claims. All runs
-use current upstream SeQUeNCe behavior, Bell-diagonal states, single-heralded
-generation, physical loss, memory decoherence, swapping, and modeled classical
-delays. Purification is disabled.
+This report supersedes the earlier Q-CAST-only width-three comparison. Physical
+link capacity is now common workload hardware:
 
-## Matched one-BSM-width results
+```yaml
+hardware:
+  link_parallelism: 1  # or 3
+```
 
-Q-CAST uses `edge_width: 1` in these rows, so every algorithm has one midpoint
-BSM per router link. This is not perfect capacity equivalence: native ODO/ACP
-can time-multiplex several memory protocols through that BSM, while Q-CAST
-width one reserves one paper-style lane per slot. Reported TTS includes only
-successful queries. The direct and memory-constrained regimes use three seeds;
-the concurrent-mesh regime uses five.
-
-| Regime | Algorithm | Success | Mean TTS (ms) |
-| --- | --- | ---: | ---: |
-| Direct, cache-friendly, 3 pairs/round | ODO | 3/3 | 17.00 |
-| Direct, cache-friendly, 3 pairs/round | ACP | 3/3 | 3.32 |
-| Direct, cache-friendly, 3 pairs/round | Q-CAST w1 | 3/3 | 40.63 |
-| Concurrent mesh, 3 clients, 5 pairs/round | ODO | 15/15 | 109.04 |
-| Concurrent mesh, 3 clients, 5 pairs/round | ACP | 15/15 | 55.79 |
-| Concurrent mesh, 3 clients, 5 pairs/round | Q-CAST w1 | 15/15 | 156.57 |
-| Memory constrained, 2 clients, 5 pairs/round | ODO | 6/6 | 150.89 |
-| Memory constrained, 2 clients, 5 pairs/round | ACP | 2/6 | 64.90 |
-| Memory constrained, 2 clients, 5 pairs/round | Q-CAST w1 | 6/6 | 247.48 |
-
-ACP is strongest when its cache has time and memory to produce useful pairs.
-ODO is strongest under the tested six-memory constraint: ACP's three-memory cap
-leaves too little application capacity, while Q-CAST pays slot-control latency.
-No tested width-one regime makes Q-CAST fastest.
-
-## Paper-style parallel Q-CAST links
-
-Width three gives Q-CAST three independent midpoint BSM/channel lanes per
-router link. ODO and ACP currently use one midpoint BSM, so this is a Q-CAST
-scaling result rather than a hardware-matched algorithm comparison.
-
-| Workload | ODO | ACP | Q-CAST w1 | Q-CAST w3 |
-| --- | ---: | ---: | ---: | ---: |
-| 3 clients, 5 pairs/round, mean TTS (ms) | 109.04 | 55.79 | 156.57 | 56.36 |
-| 3 clients, 11 pairs/round, mean TTS (ms) | 265.70 | 136.53 | not run | 139.33 |
-
-Width three reduces Q-CAST slot count and makes it competitive with ACP. It
-does not consistently beat ACP in these small samples. Recovery contributes to
-some delivered pairs but is not the main source of the improvement; parallel
-major-path lane throughput is.
-
-## Window sensitivity
-
-For the width-three, 11-pair workload over three seeds:
-
-| Generation window | Success | Mean TTS (ms) |
-| --- | ---: | ---: |
-| 1 ms | 8/9 | 347.70 |
-| 2 ms | 9/9 | 252.60 |
-| 5 ms | 9/9 | 139.33 |
-| 10 ms | 9/9 | 140.76 |
-
-Short windows spend too much time in plan and link-state coordination and may
-not complete enough physical attempts. Longer windows reduce control cycles but
-delay delivery until the generation phase closes. Five milliseconds is a
-reasonable point for this hardware/workload, not a universal optimum.
+Every `link_parallelism: 3` router link has three independent midpoint
+BSM/quantum-channel lanes for ODO, ACP, and Q-CAST. Q-CAST `edge_width` only
+caps how many shared physical lanes its planner schedules; it adds no hardware.
 
 ## Reproduction
 
-The checked-in matched configuration can be run with:
+The pilots use QDC branch `clean-acp-rebuild`, pristine SeQUeNCe v1.0.0,
+Bell-diagonal states, single-heralded generation, 20 km links,
+`link_fidelity: 0.99`, `memory_efficiency: 0.5`, 20 memories/router,
+gate/measurement fidelity 0.99, swapping probability 0.9, no purification,
+and three deterministic seeds (0, 1, 2). ACP uses asynchronous freshest reuse
+with a four-memory cache cap.
 
 ```bash
-MPLCONFIGDIR=/tmp/matplotlib-qdc \
-/home/amg671/.conda/envs/qdc/bin/python -u experiments/run.py \
-  --config config/qpq_qcast_matched.yaml \
-  --output qpq_qcast_matched
+MPLCONFIGDIR=/tmp/matplotlib-qdc /home/amg671/.conda/envs/qdc/bin/python -u \
+  experiments/run.py --config config/qpq_qcast_matched.yaml \
+  --output /tmp/qdc_shared_parallel_mesh_p1_final
+
+MPLCONFIGDIR=/tmp/matplotlib-qdc /home/amg671/.conda/envs/qdc/bin/python -u \
+  experiments/run.py --config config/qpq_qcast_matched_parallel3.yaml \
+  --output /tmp/qdc_shared_parallel_mesh_p3_final
+
+MPLCONFIGDIR=/tmp/matplotlib-qdc /home/amg671/.conda/envs/qdc/bin/python -u \
+  experiments/run.py --config config/qpq_qcast_direct_parallel3.yaml \
+  --output /tmp/qdc_shared_parallel_direct_p3_final
 ```
 
-The next fairness improvement is a shared multi-channel physical topology that
-ODO, ACP, and Q-CAST can all use. Until then, width-three results must not be
-described as an algorithm-only speedup.
+The mesh is a five-router hub-spoke topology centered on router 2 with three
+extra mesh edges. Three clients each make one QPQ query, requiring five pairs
+per round and ten per transaction. The direct topology has two routers and no
+recovery path.
+
+## Equal-Hardware Mesh Results
+
+TTS and fidelity are over successful queries only.
+
+| Lanes/link | Algorithm | Success | Mean TTS ms | Median ms | P95 ms | Mean fidelity |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | ODO | 9/9 | 116.614 | 115.204 | 191.406 | 0.981272 |
+| 1 | ACP freshest m4 | 9/9 | 61.235 | 59.701 | 108.703 | 0.980342 |
+| 1 | Q-CAST w1 | 9/9 | 182.100 | 162.500 | 393.700 | 0.977580 |
+| 3 | ODO | 9/9 | 38.101 | 35.301 | 79.602 | 0.981383 |
+| 3 | ACP freshest m4 | 6/9 | 36.868 | 40.001 | 50.001 | 0.990000 |
+| 3 | Q-CAST w3 | 9/9 | 61.911 | 45.300 | 147.100 | 0.977637 |
+
+The three ACP failures are `round2_reservation_rejected`, not deadline,
+fidelity, cache-cap, or ownership failures. With three lanes, native RSVP
+reserves up to three application memories per active link so it can use the
+shared hardware. This concurrent, 20-memory regime exposes admission control;
+it is not a result adjusted to make algorithms match.
+
+## Direct Topology
+
+| Algorithm | Success | Mean TTS ms | Mean fidelity | Q-CAST role |
+| --- | ---: | ---: | ---: | --- |
+| ODO | 3/3 | 33.334 | 0.990000 | n/a |
+| ACP freshest m4 | 3/3 | 11.567 | 0.990000 | n/a |
+| Q-CAST w3 | 3/3 | 45.000 | 0.990000 | 18 major, 0 recovery |
+
+Q-CAST therefore schedules the same direct link but is not latency-identical to
+ODO: its explicit plan and link-state control phases are still modeled.
+
+## Diagnostics And Invariants
+
+Each `diagnostics.json` now includes:
+
+- `parallel_links.links`: physical channels, attempts, and successful
+  elementary generations by lane.
+- `parallel_links.memory_occupancy`: high-watermark and final state by router.
+- `workload_diagnostics.scheduled_lane_usage_by_link`: Q-CAST scheduled use of
+  each physical BSM lane.
+- `workload_diagnostics.counters`: selected paths and explicit major/recovery
+  end-to-end delivery counts.
+
+Across mesh seeds, Q-CAST selected 402 major and 113 recovery paths at one lane
+and delivered 88 major plus 2 recovery-supported pairs. At three lanes it
+selected 143 major and 44 recovery paths and delivered 87 major plus 3 recovery
+supported pairs. Fewer paths at three lanes means fewer scheduling slots, not
+less physical hardware.
+
+All pilot memories end `RAW`. ACP's adaptive-cache high-watermark is at most 4
+per router and its reservation accounting is consistent. Integration tests cover
+shared three-channel visibility for all algorithms, Q-CAST memory allocation,
+and final RAW state.
+
+## Interpretation
+
+The prior Q-CAST width-three improvement was not an algorithm-only gain: three
+physical lanes were available only to Q-CAST. With shared hardware, ODO improves
+from 116.614 ms to 38.101 ms and Q-CAST from 182.100 ms to 61.911 ms. ACP's
+successful queries are also faster, but its admission behavior needs a focused
+capacity/concurrency study.
+
+Q-CAST uses genuine mesh recovery, but only 3 of 90 delivered three-lane pairs
+use recovery. These pilots do not establish an algorithmic multipath advantage
+over ODO under equal hardware. They remove the hardware confound and make
+Q-CAST's remaining control overhead visible.
+
+## Remaining Limitations
+
+- Q-CAST uses centrally orchestrated but explicitly delayed classical control,
+  not a literal distributed XOR implementation.
+- RSVP and Q-CAST slots have different admission semantics despite equal lanes.
+- This is a three-seed pilot, not a full statistical comparison.

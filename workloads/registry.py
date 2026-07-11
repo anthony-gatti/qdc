@@ -40,6 +40,10 @@ def _single_pair_factory(config: Mapping[str, Any], seed: int) -> Workload:
         request_rate_hz=float(workload.get("request_rate_hz", 10.0)),
         request_window_s=float(workload.get("request_window_s", 0.08)),
         fidelity_threshold=float(workload.get("fidelity_threshold", 0.5)),
+        link_parallelism=int(hardware.get(
+            "link_parallelism",
+            hardware.get("bsm_lanes_per_link", 1),
+        )),
         seed=seed,
     )
 

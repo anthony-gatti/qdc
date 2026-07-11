@@ -141,6 +141,7 @@ class ConcurrentPairWorkload(Workload):
     gate_fidelity: float = 0.99
     measurement_fidelity: float = 0.99
     swapping_success_probability: float = 0.9
+    link_parallelism: int = 1
     simulation_end_time_s: float = 0.1
     request_override: tuple[ConcurrentPairSpec, ...] | None = field(
         default=None,
@@ -159,6 +160,8 @@ class ConcurrentPairWorkload(Workload):
             raise ValueError("Concurrent-pair request timing is invalid")
         if self.inter_node_distance_m <= 0 or self.memories_per_node <= 0:
             raise ValueError("Concurrent-pair topology resources must be positive")
+        if self.link_parallelism <= 0:
+            raise ValueError("Concurrent-pair link_parallelism must be positive")
         for name, value in (
             ("fidelity_threshold", self.fidelity_threshold),
             ("memory_fidelity", self.memory_fidelity),
@@ -264,5 +267,9 @@ class ConcurrentPairWorkload(Workload):
             gate_fidelity=float(hardware.get("gate_fidelity", 0.99)),
             measurement_fidelity=float(hardware.get("measurement_fidelity", 0.99)),
             swapping_success_probability=float(hardware.get("swapping_success_probability", 0.9)),
+            link_parallelism=int(hardware.get(
+                "link_parallelism",
+                hardware.get("bsm_lanes_per_link", 1),
+            )),
             simulation_end_time_s=float(experiment.get("simulation_end_time_s", 0.1)),
         )

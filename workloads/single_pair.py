@@ -34,10 +34,13 @@ class SinglePairPaperWorkload(Workload):
     stop_margin_s: float = 1.0
     classical_timing_profile: str = CLASSICAL_TIMING_ACP_PAPER
     end_node_processing_delay_ps: int = ACP_PAPER_END_NODE_PROCESSING_DELAY_PS
+    link_parallelism: int = 1
 
     def __post_init__(self):
         if self.classical_timing_profile not in {CLASSICAL_TIMING_SEQUENCE, CLASSICAL_TIMING_ACP_PAPER}:
             raise ValueError(f"Unsupported classical timing profile: {self.classical_timing_profile}")
+        if self.link_parallelism <= 0:
+            raise ValueError("Single-pair link_parallelism must be positive")
 
     def requests(self) -> list[tuple]:
         interval = 1.0 / self.request_rate_hz

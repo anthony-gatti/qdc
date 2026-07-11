@@ -19,7 +19,8 @@ algorithm:
   cache_strategy: freshest
   purification: false
   execution_profile: asynchronous
-  edge_width: 1
+  # Caps Q-CAST path scheduling; it does not construct hardware.
+  edge_width: 3
   generation_window_s: 0.005
   control_processing_delay_s: 0.0001
   swap_success_probability: 0.9
@@ -37,7 +38,8 @@ hardware:
   gate_fidelity: 0.99
   measurement_fidelity: 0.99
   swapping_success_probability: 0.9
-  link_parallelism: 1
+  # Every backend receives these three physical BSM/channel lanes per link.
+  link_parallelism: 3
 
 topology:
   type: hub_spoke

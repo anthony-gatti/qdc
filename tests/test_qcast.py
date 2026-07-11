@@ -287,16 +287,65 @@ class QCASTSequenceIntegrationTest(unittest.TestCase):
         self.assertGreater(diagnostics["counters"]["plan_messages_sent"], 0)
         self.assertGreater(diagnostics["counters"]["link_state_messages_sent"], 0)
         self.assertEqual(diagnostics["edge_models"][0]["attempt_duration_ps"], 20_000_000)
-        self.assertEqual(len(diagnostics["edge_models"][0]["physical_channels"]), 2)
+        self.assertEqual(len(diagnostics["edge_models"][0]["physical_channels"]), 1)
+        self.assertEqual(diagnostics["edge_models"][0]["scheduling_width"], 1)
         self.assertEqual(
             diagnostics["edge_width_model"],
-            "independent_midpoint_bsm_channels",
+            "path_scheduling_cap_over_shared_link_parallelism",
+        )
+        self.assertEqual(
+            diagnostics["counters"]["end_to_end_pairs_delivered_major"],
+            1,
+        )
+        self.assertGreater(
+            sum(
+                diagnostics["scheduled_lane_usage_by_link"]["router_0|router_1"].values()
+            ),
+            0,
         )
         self.assertTrue(all(
             state["plan_slots"]
             for state in diagnostics["control_state_by_node"].values()
         ))
         self.assertTrue(all(diagnostics["all_memories_raw_at_end"].values()))
+
+    def test_qcast_scheduling_width_does_not_create_hardware(self):
+        start = int(0.005 * SECOND)
+        workload = ConcurrentPairWorkload(
+            num_requests=1,
+            seed=4,
+            num_nodes=2,
+            qdc_node_index=0,
+            topology_type="linear",
+            inter_node_distance_m=1_000,
+            memories_per_node=6,
+            link_parallelism=3,
+            simulation_end_time_s=0.04,
+            request_override=(ConcurrentPairSpec(
+                0,
+                "router_0",
+                "router_1",
+                start,
+                int(0.03 * SECOND),
+            ),),
+        )
+        result, diagnostics = self._run(
+            workload,
+            QCAST(
+                edge_width=1,
+                generation_window_ps=int(0.003 * SECOND),
+                max_major_paths=1,
+                link_state_hops=1,
+            ),
+        )
+        self.assertEqual((result.num_requests, result.num_success), (1, 1))
+        edge = diagnostics["edge_models"][0]
+        self.assertEqual(edge["physical_parallelism"], 3)
+        self.assertEqual(edge["scheduling_width"], 1)
+        self.assertLessEqual(
+            max(diagnostics["scheduled_lane_usage_by_link"]["router_0|router_1"].values()),
+            diagnostics["counters"]["slots_started"],
+        )
 
     def test_concurrent_pair_workload_remains_usable_by_odo(self):
         start = int(0.005 * SECOND)

@@ -12,7 +12,6 @@ from sequence.kernel.event import Event
 from sequence.kernel.process import Process
 from sequence.resource_management.action_condition_set import (
     eg_rule_action_await,
-    eg_rule_action_request,
     eg_rule_condition,
 )
 from sequence.resource_management.memory_manager import MemoryInfo
@@ -24,6 +23,11 @@ from backends.sequence.qcast_protocol import (
     QCASTMessage,
     QCASTMessageType,
     QCASTReservation,
+)
+from backends.sequence.parallel_links import (
+    parallel_eg_rule_action_request,
+    record_generation_success,
+    record_memory_occupancy,
 )
 from workloads.base import PairDelivery
 
@@ -132,6 +136,7 @@ class QCASTDemandScheduler:
         self.counters = Counter()
         self.events: list[dict] = []
         self.max_allocated_by_node = Counter()
+        self.scheduled_lanes_by_channel = Counter()
         self._edge_middle_nodes = self._middle_nodes_by_edge()
         self._graph = self._router_graph()
         self._edge_model_details = {}
@@ -321,7 +326,7 @@ class QCASTDemandScheduler:
             memory_index = record["memory_index"]
             condition_args = {"memory_indices": [memory_index]}
             if is_requester:
-                action = eg_rule_action_request
+                action = parallel_eg_rule_action_request
                 action_args = {
                     "mid": assignment.middle,
                     "path": [assignment.left, assignment.right],
@@ -340,6 +345,7 @@ class QCASTDemandScheduler:
             rule.set_reservation(assignment.reservation)
             node.resource_manager.load(rule)
             slot.rules.append((node, rule))
+        record_memory_occupancy(node)
         self.counters["plan_activations"] += 1
 
     def stop_generation(self, slot_id: int) -> None:
@@ -354,6 +360,12 @@ class QCASTDemandScheduler:
                     success, fidelity = self._assignment_state(assignment)
                     slot.edge_success[assignment.lane_id] = success
                     slot.edge_fidelity[assignment.lane_id] = fidelity
+                    if success:
+                        record_generation_success(
+                            self.routers[assignment.left],
+                            assignment.right,
+                            assignment.middle,
+                        )
                     self.counters["elementary_lanes_succeeded" if success else "elementary_lanes_failed"] += 1
 
         maximum_state_delay = self.algorithm.control_processing_delay_ps
@@ -566,6 +578,8 @@ class QCASTDemandScheduler:
         self.counters["end_to_end_pairs_delivered"] += 1
         if used_recovery:
             self.counters["end_to_end_pairs_delivered_recovery"] += 1
+        else:
+            self.counters["end_to_end_pairs_delivered_major"] += 1
         self.events.append({
             "event": "pair_delivered",
             "time_ps": self.timeline.now(),
@@ -646,13 +660,23 @@ class QCASTDemandScheduler:
             "edge_models": [
                 {
                     "edge": list(edge.key),
-                    "width": edge.width,
+                    "physical_parallelism": len(
+                        self._edge_model_details[edge.key]["physical_channels"]
+                    ),
+                    "scheduling_width": edge.width,
                     "success_probability": edge.success_probability,
                     **self._edge_model_details[edge.key],
                 }
                 for edge in self._edge_models
             ],
-            "edge_width_model": "independent_midpoint_bsm_channels",
+            "edge_width_model": "path_scheduling_cap_over_shared_link_parallelism",
+            "scheduled_lane_usage_by_link": {
+                "|".join(edge): {
+                    middle: self.scheduled_lanes_by_channel[(edge, middle)]
+                    for middle in middles
+                }
+                for edge, middles in sorted(self._edge_middle_nodes.items())
+            },
             "control_state_by_node": {
                 name: {
                     "plan_slots": sorted(router.qcast_control.plan_by_slot),
@@ -743,6 +767,10 @@ class QCASTDemandScheduler:
                         reservation,
                         middle,
                     ))
+                    self.scheduled_lanes_by_channel[(
+                        edge_key(left, right),
+                        middle,
+                    )] += 1
                 lane_name = f"slot-{slot_id}:{path.path_id}:{lane_index}"
                 lanes.append(QCASTLane(lane_name, path, lane_index, tuple(assignments)))
             allocations[path.path_id] = QCASTPathAllocation(path, tuple(lanes))
@@ -939,7 +967,7 @@ class QCASTDemandScheduler:
                 models.append(QCASTEdge(
                     left,
                     right,
-                    len(middle_names),
+                    min(len(middle_names), self.algorithm.edge_width),
                     min(1.0, max(0.0, slot_probability)),
                 ))
         return tuple(models)

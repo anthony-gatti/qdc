@@ -265,6 +265,7 @@ class QPQWorkload(Workload):
     gate_fidelity: float = 0.99
     measurement_fidelity: float = 0.99
     swapping_success_probability: float = 1.0
+    link_parallelism: int = 1
     simulation_end_time_s: float = 180.0
     topology_override: Mapping[str, Any] | None = field(default=None, repr=False, compare=False)
     query_override: tuple[QPQQuerySpec, ...] | None = field(default=None, repr=False, compare=False)
@@ -280,6 +281,8 @@ class QPQWorkload(Workload):
             raise ValueError("QPQ requires at least two quantum routers")
         if not 0 <= self.qdc_node_index < self.num_nodes:
             raise ValueError("QPQ qdc_node_index must identify a quantum router")
+        if self.link_parallelism <= 0:
+            raise ValueError("QPQ link_parallelism must be positive")
 
     def queries(self) -> list[QPQQuerySpec]:
         if self.query_override is not None:
@@ -391,6 +394,10 @@ class QPQWorkload(Workload):
             swapping_success_probability=float(hardware.get(
                 "swapping_success_probability",
                 1.0,
+            )),
+            link_parallelism=int(hardware.get(
+                "link_parallelism",
+                hardware.get("bsm_lanes_per_link", 1),
             )),
             simulation_end_time_s=float(experiment.get("simulation_end_time_s", 180.0)),
             topology_override=topology_override,

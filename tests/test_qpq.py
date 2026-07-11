@@ -298,6 +298,40 @@ class QPQSequenceIntegrationTest(unittest.TestCase):
         self.assertEqual(len(completions), 2)
         self.assertEqual(submissions[1]["time_ps"], completions[0]["time_ps"])
 
+    def test_shared_link_parallelism_is_visible_to_all_algorithms(self):
+        workload = replace(self._workload(), link_parallelism=3)
+        algorithms = (
+            ShortestPathOnDemand(),
+            AdaptiveContinuous(adaptive_max_memory=0),
+            QCAST(
+                edge_width=3,
+                generation_window_ps=int(0.003 * SECOND),
+                max_major_paths=1,
+                link_state_hops=1,
+            ),
+        )
+        for algorithm in algorithms:
+            with self.subTest(algorithm=algorithm.name), tempfile.TemporaryDirectory() as directory:
+                runtime = SequenceRuntime(Path(directory))
+                result = algorithm.run(runtime, workload)
+            self.assertEqual((result.num_requests, result.num_success), (1, 1))
+            diagnostics = runtime.last_diagnostics["parallel_links"]
+            link = diagnostics["links"]["router_0|router_1"]
+            self.assertEqual(link["parallelism"], 3)
+            self.assertEqual(len(link["channels"]), 3)
+            self.assertGreater(
+                sum(item["generation_attempts"] for item in link["channels"].values()),
+                0,
+            )
+            self.assertGreater(
+                sum(item["generation_successes"] for item in link["channels"].values()),
+                0,
+            )
+            self.assertTrue(all(
+                states["final"].get("RAW", 0) == workload.memories_per_node
+                for states in diagnostics["memory_occupancy"].values()
+            ))
+
     def test_qcast_multihop_qpq_swaps_every_delivered_pair(self):
         workload = self._qcast_multihop_workload()
         with tempfile.TemporaryDirectory() as directory:

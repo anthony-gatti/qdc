@@ -19,10 +19,11 @@ from algorithms.qcast import QCAST
 from backends.sequence.acp_protocol import AdaptiveReservation
 from backends.sequence.acp_topology import ACPRouterNetTopo
 from backends.sequence.configured_topology import ConfiguredRouterNetTopo
-from backends.sequence.qcast_topology import (
-    QCASTRouterNetTopo,
-    expand_qcast_parallel_links,
+from backends.sequence.parallel_links import (
+    collect_parallel_link_diagnostics,
+    expand_parallel_links,
 )
+from backends.sequence.qcast_topology import QCASTRouterNetTopo
 from backends.sequence.workload_adapters import create_sequence_workload_adapter
 
 
@@ -45,15 +46,15 @@ class SequenceRuntime:
             )
         adaptive_memory = getattr(algorithm, "adaptive_max_memory", 0)
         topology_config = workload.topology(adaptive_memory=adaptive_memory)
+        topology_config = expand_parallel_links(
+            topology_config,
+            int(getattr(workload, "link_parallelism", 1)),
+        )
         if isinstance(algorithm, QCAST):
             for template in topology_config.get("templates", {}).values():
                 template.setdefault("EntanglementSwapping", {})[
                     "swapping_success_prob"
                 ] = algorithm.swap_success_probability
-            topology_config = expand_qcast_parallel_links(
-                topology_config,
-                algorithm.edge_width,
-            )
         topology_path = self.output_dir / "topologies" / f"{algorithm.name}_topology.json"
         topology_path.parent.mkdir(parents=True, exist_ok=True)
         topology_path.write_text(json.dumps(topology_config, indent=2) + "\n")
@@ -90,8 +91,13 @@ class SequenceRuntime:
         tl.init()
         tl.run()
         workload_adapter.finalize()
+        teardown = self._teardown_residual_memories(network_topo)
         result = workload_adapter.collect()
         self.last_diagnostics = self._collect_diagnostics(network_topo, algorithm.name)
+        self.last_diagnostics["simulation_teardown"] = teardown
+        self.last_diagnostics["parallel_links"] = collect_parallel_link_diagnostics(
+            network_topo
+        )
         self.last_diagnostics["workload"] = workload.name
         self.last_diagnostics["workload_diagnostics"] = workload_adapter.diagnostics()
         return result
@@ -107,6 +113,19 @@ class SequenceRuntime:
         EntanglementSwappingB.set_formalism(BELL_DIAGONAL_STATE_FORMALISM)
         EntanglementGenerationA.set_global_type("single_heralded")
         EntanglementGenerationB.set_global_type("single_heralded")
+
+    def _teardown_residual_memories(self, network_topo) -> dict:
+        """Release simulator state left by a stop-time before reservation expiry."""
+        released = {}
+        for router in network_topo.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER):
+            count = 0
+            for info in router.resource_manager.memory_manager:
+                if info.state == "RAW":
+                    continue
+                router.resource_manager.memory_manager.update(info.memory, "RAW")
+                count += 1
+            released[router.name] = count
+        return {"released_memories_by_node": released}
 
     def _collect_diagnostics(self, network_topo, algorithm_name: str) -> dict:
         counters = Counter()

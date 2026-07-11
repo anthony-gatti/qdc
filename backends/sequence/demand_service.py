@@ -70,7 +70,10 @@ class SequenceDemandService(RequestApp):
             demand.destination,
             reservation_start,
             demand.deadline_ps,
-            1,
+            min(
+                demand.pair_count,
+                max(1, int(getattr(self.node, "link_parallelism", 1))),
+            ),
             demand.fidelity_threshold,
             demand.pair_count,
             demand.reservation_id,
