@@ -47,6 +47,7 @@ def generate_hub_spoke_topology(
     coherence_time_s: float = 5.0,
     gate_fidelity: float = 0.99,
     measurement_fidelity: float = 0.99,
+    swapping_success_probability: float = 1.0,
     attenuation: float = 0.0002,
     classical_timing_profile: str = CLASSICAL_TIMING_SEQUENCE,
     end_node_processing_delay_ps: int = ACP_PAPER_END_NODE_PROCESSING_DELAY_PS,
@@ -110,6 +111,9 @@ def generate_hub_spoke_topology(
         "adaptive_max_memory": adaptive_max_memory,
         "encoding_type": encoding_type,
         "decoherence_errors": [1/3, 1/3, 1/3],
+        "EntanglementSwapping": {
+            "swapping_success_prob": swapping_success_probability,
+        },
     }
 
     # Router nodes

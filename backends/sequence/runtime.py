@@ -15,9 +15,14 @@ from sequence.topology.router_net_topo import RouterNetTopo
 
 from algorithms.acp import AdaptiveContinuous
 from algorithms.odo import ShortestPathOnDemand
+from algorithms.qcast import QCAST
 from backends.sequence.acp_protocol import AdaptiveReservation
 from backends.sequence.acp_topology import ACPRouterNetTopo
 from backends.sequence.configured_topology import ConfiguredRouterNetTopo
+from backends.sequence.qcast_topology import (
+    QCASTRouterNetTopo,
+    expand_qcast_parallel_links,
+)
 from backends.sequence.workload_adapters import create_sequence_workload_adapter
 
 
@@ -31,8 +36,25 @@ class SequenceRuntime:
 
     def run(self, workload, algorithm) -> object:
         self._configure_sequence()
+        if (
+            isinstance(algorithm, QCAST)
+            and workload.sequence_adapter != "concurrent_pairs"
+        ):
+            raise NotImplementedError(
+                "Q-CAST currently supports only the concurrent_pairs workload; "
+                "QPQ integration is intentionally deferred"
+            )
         adaptive_memory = getattr(algorithm, "adaptive_max_memory", 0)
         topology_config = workload.topology(adaptive_memory=adaptive_memory)
+        if isinstance(algorithm, QCAST):
+            for template in topology_config.get("templates", {}).values():
+                template.setdefault("EntanglementSwapping", {})[
+                    "swapping_success_prob"
+                ] = algorithm.swap_success_probability
+            topology_config = expand_qcast_parallel_links(
+                topology_config,
+                algorithm.edge_width,
+            )
         topology_path = self.output_dir / "topologies" / f"{algorithm.name}_topology.json"
         topology_path.parent.mkdir(parents=True, exist_ok=True)
         topology_path.write_text(json.dumps(topology_config, indent=2) + "\n")
@@ -50,6 +72,8 @@ class SequenceRuntime:
             })
         elif isinstance(algorithm, ShortestPathOnDemand):
             network_topo = ConfiguredRouterNetTopo(topology_config)
+        elif isinstance(algorithm, QCAST):
+            network_topo = QCASTRouterNetTopo(topology_config)
         else:
             raise TypeError(f"Unsupported algorithm: {algorithm!r}")
 
@@ -59,6 +83,7 @@ class SequenceRuntime:
             workload,
             algorithm.name,
             getattr(network_topo, "record_served_path", None),
+            algorithm,
         )
         workload_adapter.schedule()
 

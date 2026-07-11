@@ -8,6 +8,7 @@ from typing import Any
 from algorithms.acp import AdaptiveContinuous
 from algorithms.base import RoutingAlgorithm
 from algorithms.odo import ShortestPathOnDemand
+from algorithms.qcast import QCAST
 
 
 AlgorithmFactory = Callable[[Mapping[str, Any]], RoutingAlgorithm]
@@ -45,6 +46,27 @@ def _acp_options(config: Mapping[str, Any]) -> dict[str, Any]:
 def _odo_factory(config: Mapping[str, Any]) -> RoutingAlgorithm:
     del config
     return ShortestPathOnDemand()
+
+
+@register_algorithm("qcast")
+def _qcast_factory(config: Mapping[str, Any]) -> RoutingAlgorithm:
+    generation_window_ps = config.get("generation_window_ps")
+    if generation_window_ps is None:
+        generation_window_ps = int(float(config.get("generation_window_s", 0.005)) * 10**12)
+    processing_delay_ps = config.get("control_processing_delay_ps")
+    if processing_delay_ps is None:
+        processing_delay_ps = int(float(config.get("control_processing_delay_s", 0.0001)) * 10**12)
+    return QCAST(
+        edge_width=int(config.get("edge_width", 3)),
+        generation_window_ps=int(generation_window_ps),
+        control_processing_delay_ps=int(processing_delay_ps),
+        swap_success_probability=float(config.get("swap_success_probability", 0.9)),
+        link_state_hops=int(config.get("link_state_hops", 3)),
+        recovery_paths_per_segment=int(config.get("recovery_paths_per_segment", 1)),
+        max_recovery_paths_per_major=int(config.get("max_recovery_paths_per_major", 12)),
+        max_major_paths=int(config.get("max_major_paths", 200)),
+        max_hops=int(config.get("max_hops", 8)),
+    )
 
 
 @register_algorithm("acp")

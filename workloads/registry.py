@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from workloads.base import Workload
+from workloads.concurrent_pairs import ConcurrentPairWorkload
 from workloads.qpq import QPQWorkload
 from workloads.single_pair import SinglePairPaperWorkload
 
@@ -41,6 +42,11 @@ def _single_pair_factory(config: Mapping[str, Any], seed: int) -> Workload:
         fidelity_threshold=float(workload.get("fidelity_threshold", 0.5)),
         seed=seed,
     )
+
+
+@register_workload("concurrent_pairs")
+def _concurrent_pairs_factory(config: Mapping[str, Any], seed: int) -> Workload:
+    return ConcurrentPairWorkload.from_config(config, seed)
 
 
 def create_workload(name: str, config: Mapping[str, Any], seed: int) -> Workload:

@@ -9,7 +9,7 @@ from typing import Literal
 from results import BackendResult
 
 
-AlgorithmKind = Literal["odo", "acp", "ucp"]
+AlgorithmKind = Literal["odo", "acp", "ucp", "qcast"]
 
 
 @dataclass(frozen=True)

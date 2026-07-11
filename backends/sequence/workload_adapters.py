@@ -11,6 +11,7 @@ from sequence.kernel.process import Process
 from sequence.topology.router_net_topo import RouterNetTopo
 
 from backends.sequence.demand_service import SequenceDemandService
+from backends.sequence.qcast_scheduler import QCASTDemandScheduler
 from pair_app import PairRequestApp, collect_pair_results
 from results import BackendResult
 from workloads.qpq import QPQTransaction
@@ -23,11 +24,13 @@ class SequenceWorkloadAdapter(ABC):
         workload,
         algorithm_name: str,
         served_path_observer: Callable[[tuple[str, ...], int], None] | None = None,
+        algorithm=None,
     ):
         self.network_topology = network_topology
         self.workload = workload
         self.algorithm_name = algorithm_name
         self.served_path_observer = served_path_observer
+        self.algorithm = algorithm
 
     @abstractmethod
     def schedule(self) -> None:
@@ -46,8 +49,8 @@ class SequenceWorkloadAdapter(ABC):
 
 
 class SinglePairSequenceAdapter(SequenceWorkloadAdapter):
-    def __init__(self, network_topology, workload, algorithm_name: str, served_path_observer=None):
-        super().__init__(network_topology, workload, algorithm_name, served_path_observer)
+    def __init__(self, network_topology, workload, algorithm_name: str, served_path_observer=None, algorithm=None):
+        super().__init__(network_topology, workload, algorithm_name, served_path_observer, algorithm)
         self.apps = {
             router.name: PairRequestApp(router, served_path_observer)
             for router in network_topology.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER)
@@ -72,8 +75,8 @@ class SinglePairSequenceAdapter(SequenceWorkloadAdapter):
 
 
 class QPQSequenceAdapter(SequenceWorkloadAdapter):
-    def __init__(self, network_topology, workload, algorithm_name: str, served_path_observer=None):
-        super().__init__(network_topology, workload, algorithm_name, served_path_observer)
+    def __init__(self, network_topology, workload, algorithm_name: str, served_path_observer=None, algorithm=None):
+        super().__init__(network_topology, workload, algorithm_name, served_path_observer, algorithm)
         self.services = {
             router.name: SequenceDemandService(router, served_path_observer)
             for router in network_topology.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER)
@@ -133,9 +136,86 @@ class QPQSequenceAdapter(SequenceWorkloadAdapter):
         }
 
 
+class ConcurrentPairSequenceAdapter(SequenceWorkloadAdapter):
+    """Use the shared demand contract with Q-CAST or ordinary RSVP."""
+
+    def __init__(self, network_topology, workload, algorithm_name: str, served_path_observer=None, algorithm=None):
+        super().__init__(
+            network_topology,
+            workload,
+            algorithm_name,
+            served_path_observer,
+            algorithm,
+        )
+        from workloads.concurrent_pairs import ConcurrentPairTransaction
+
+        self.transactions = [
+            ConcurrentPairTransaction(spec)
+            for spec in workload.requests()
+        ]
+        routers = network_topology.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER)
+        if algorithm_name == "qcast":
+            self.scheduler = QCASTDemandScheduler(
+                network_topology,
+                algorithm,
+                workload.controller_node,
+            )
+            self.services = None
+        else:
+            self.scheduler = None
+            self.services = {
+                router.name: SequenceDemandService(router, served_path_observer)
+                for router in routers
+            }
+
+    def schedule(self) -> None:
+        timeline = self.network_topology.get_timeline()
+        for transaction in self.transactions:
+            submitter = (
+                self.scheduler.submit
+                if self.scheduler is not None
+                else self.services[transaction.spec.source].submit
+            )
+            timeline.schedule(Event(
+                transaction.spec.start_time_ps,
+                Process(submitter, "__call__", [transaction.spec.demand(), transaction]),
+                0,
+            ))
+
+    def finalize(self) -> None:
+        now = self.network_topology.get_timeline().now()
+        if self.scheduler is not None:
+            self.scheduler.finalize(now)
+        else:
+            for service in self.services.values():
+                service.finalize(now)
+        for transaction in self.transactions:
+            transaction.finalize(now)
+
+    def collect(self) -> BackendResult:
+        return BackendResult(
+            backend_name=self.algorithm_name,
+            seed=self.workload.seed,
+            num_nodes=len(self.network_topology.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER)),
+            request_results=[
+                transaction.to_request_result()
+                for transaction in sorted(self.transactions, key=lambda item: item.spec.request_id)
+            ],
+        )
+
+    def diagnostics(self) -> dict:
+        if self.scheduler is not None:
+            return self.scheduler.diagnostics()
+        counters = Counter()
+        for service in self.services.values():
+            counters.update(service.counters)
+        return {"counters": dict(counters)}
+
+
 _ADAPTERS: dict[str, type[SequenceWorkloadAdapter]] = {
     "single_pair": SinglePairSequenceAdapter,
     "qpq": QPQSequenceAdapter,
+    "concurrent_pairs": ConcurrentPairSequenceAdapter,
 }
 
 
@@ -145,6 +225,7 @@ def create_sequence_workload_adapter(
     workload,
     algorithm_name: str,
     served_path_observer: Callable[[tuple[str, ...], int], None] | None = None,
+    algorithm=None,
 ) -> SequenceWorkloadAdapter:
     try:
         adapter_type = _ADAPTERS[adapter_name]
@@ -155,4 +236,5 @@ def create_sequence_workload_adapter(
         workload,
         algorithm_name,
         served_path_observer,
+        algorithm,
     )
