@@ -264,6 +264,7 @@ class QPQWorkload(Workload):
     coherence_time_s: float = 5.0
     gate_fidelity: float = 0.99
     measurement_fidelity: float = 0.99
+    swapping_success_probability: float = 1.0
     simulation_end_time_s: float = 180.0
     topology_override: Mapping[str, Any] | None = field(default=None, repr=False, compare=False)
     query_override: tuple[QPQQuerySpec, ...] | None = field(default=None, repr=False, compare=False)
@@ -306,6 +307,10 @@ class QPQWorkload(Workload):
                 query_id += 1
         return sorted(queries, key=lambda query: (query.start_time_ps, query.query_id))
 
+    @property
+    def controller_node(self) -> str:
+        return f"router_{self.qdc_node_index}"
+
     def topology(self, adaptive_memory: int) -> dict:
         if self.topology_override is not None:
             config = copy.deepcopy(dict(self.topology_override))
@@ -322,6 +327,7 @@ class QPQWorkload(Workload):
             coherence_time_s=self.coherence_time_s,
             gate_fidelity=self.gate_fidelity,
             measurement_fidelity=self.measurement_fidelity,
+            swapping_success_probability=self.swapping_success_probability,
             stop_time_s=self.simulation_end_time_s,
             seed=self.seed,
             extra_mesh_edges=self.extra_mesh_edges,
@@ -382,6 +388,10 @@ class QPQWorkload(Workload):
             coherence_time_s=float(hardware.get("memory_coherence_time_s", 5.0)),
             gate_fidelity=float(hardware.get("gate_fidelity", 0.99)),
             measurement_fidelity=float(hardware.get("measurement_fidelity", 0.99)),
+            swapping_success_probability=float(hardware.get(
+                "swapping_success_probability",
+                1.0,
+            )),
             simulation_end_time_s=float(experiment.get("simulation_end_time_s", 180.0)),
             topology_override=topology_override,
             query_override=resolved_queries,

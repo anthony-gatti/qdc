@@ -38,11 +38,10 @@ class SequenceRuntime:
         self._configure_sequence()
         if (
             isinstance(algorithm, QCAST)
-            and workload.sequence_adapter != "concurrent_pairs"
+            and workload.sequence_adapter not in {"concurrent_pairs", "qpq"}
         ):
             raise NotImplementedError(
-                "Q-CAST currently supports only the concurrent_pairs workload; "
-                "QPQ integration is intentionally deferred"
+                "Q-CAST currently supports only concurrent_pairs and QPQ workloads"
             )
         adaptive_memory = getattr(algorithm, "adaptive_max_memory", 0)
         topology_config = workload.topology(adaptive_memory=adaptive_memory)

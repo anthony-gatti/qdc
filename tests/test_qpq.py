@@ -6,6 +6,7 @@ from pathlib import Path
 
 from algorithms.acp import AdaptiveContinuous
 from algorithms.odo import ShortestPathOnDemand
+from algorithms.qcast import QCAST
 from algorithms.registry import create_algorithm
 from backends.sequence.runtime import SequenceRuntime
 from common import SECOND
@@ -194,6 +195,54 @@ class QPQSequenceIntegrationTest(unittest.TestCase):
             query_override=(query,),
         )
 
+    def _qcast_multihop_workload(self, fidelity_threshold: float = 0.7) -> QPQWorkload:
+        topology = generate_linear_topology(
+            3,
+            inter_node_distance_m=1_000,
+            memo_size=8,
+            adaptive_max_memory=0,
+            memory_fidelity=0.99,
+            memory_efficiency=1.0,
+            coherence_time_s=5,
+            gate_fidelity=0.99,
+            measurement_fidelity=0.99,
+            swapping_success_probability=1.0,
+            stop_time_s=0.1,
+            qdc_node_index=2,
+            encoding_type="single_heralded",
+            formalism="bell_diagonal",
+            seed=17,
+        )
+        query = QPQQuerySpec(
+            query_id=0,
+            source="router_0",
+            destination="router_2",
+            start_time_ps=int(0.005 * SECOND),
+            transaction_deadline_ps=int(0.08 * SECOND),
+            database_size_log=1,
+            fidelity_threshold=fidelity_threshold,
+            round_deadline_ps=int(0.03 * SECOND),
+        )
+        return QPQWorkload(
+            database_size_log=1,
+            num_clients=1,
+            queries_per_client=1,
+            round_deadline_s=0.03,
+            transaction_duration_s=0.075,
+            start_offset_s=0.005,
+            num_nodes=3,
+            qdc_node_index=2,
+            extra_mesh_edges=0,
+            inter_node_distance_m=1_000,
+            memories_per_node=8,
+            memory_efficiency=1.0,
+            swapping_success_probability=1.0,
+            simulation_end_time_s=0.1,
+            seed=17,
+            topology_override=topology,
+            query_override=(query,),
+        )
+
     def test_odo_completes_both_rounds_with_exact_pair_counts(self):
         with tempfile.TemporaryDirectory() as directory:
             runtime = SequenceRuntime(Path(directory))
@@ -214,6 +263,85 @@ class QPQSequenceIntegrationTest(unittest.TestCase):
         self.assertGreater(submissions[0]["reservation_start_ps"], submissions[0]["application_start_ps"])
         self.assertEqual(submissions[1]["time_ps"], completions[0]["time_ps"])
         self.assertGreater(submissions[1]["reservation_start_ps"], submissions[1]["application_start_ps"])
+
+    def test_qcast_completes_both_rounds_with_exact_pair_counts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = SequenceRuntime(Path(directory))
+            result = QCAST(
+                edge_width=3,
+                generation_window_ps=int(0.003 * SECOND),
+                max_major_paths=1,
+                link_state_hops=1,
+            ).run(runtime, self._workload())
+
+        self.assertEqual((result.num_requests, result.num_success), (1, 1))
+        row = result.request_results[0]
+        self.assertEqual((row.round1_pairs, row.round2_pairs, row.expected_pairs), (3, 3, 6))
+        self.assertEqual(len(row.pair_arrival_ms), 6)
+        self.assertLess(row.round1_completion_ms, row.round2_completion_ms)
+        self.assertEqual(row.delivered_pairs_fully_fresh, 6)
+        self.assertEqual(row.delivered_fresh_elementary_edges, 6)
+
+        diagnostics = runtime.last_diagnostics["workload_diagnostics"]
+        self.assertEqual(diagnostics["controller_node"], "router_1")
+        self.assertEqual(diagnostics["counters"]["demands_completed"], 2)
+        self.assertTrue(all(diagnostics["all_memories_raw_at_end"].values()))
+        submissions = [
+            event for event in diagnostics["events"]
+            if event["event"] == "demand_submitted"
+        ]
+        completions = [
+            event for event in diagnostics["events"]
+            if event["event"] == "demand_completed"
+        ]
+        self.assertEqual(len(submissions), 2)
+        self.assertEqual(len(completions), 2)
+        self.assertEqual(submissions[1]["time_ps"], completions[0]["time_ps"])
+
+    def test_qcast_multihop_qpq_swaps_every_delivered_pair(self):
+        workload = self._qcast_multihop_workload()
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = SequenceRuntime(Path(directory))
+            result = QCAST(
+                edge_width=1,
+                generation_window_ps=int(0.002 * SECOND),
+                swap_success_probability=1.0,
+                max_major_paths=1,
+                link_state_hops=2,
+            ).run(runtime, workload)
+
+        self.assertEqual((result.num_requests, result.num_success), (1, 1))
+        row = result.request_results[0]
+        self.assertEqual((row.round1_pairs, row.round2_pairs), (3, 3))
+        self.assertEqual(row.delivered_fresh_elementary_edges, 12)
+        self.assertLess(row.fidelity, workload.memory_fidelity)
+        diagnostics = runtime.last_diagnostics["workload_diagnostics"]
+        self.assertGreater(diagnostics["counters"]["swaps_attempted"], 0)
+        self.assertTrue(all(
+            count <= workload.memories_per_node
+            for count in diagnostics["max_allocated_memories_by_node"].values()
+        ))
+        self.assertTrue(all(diagnostics["all_memories_raw_at_end"].values()))
+
+    def test_qcast_qpq_rejects_low_fidelity_swapped_pairs_until_deadline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = SequenceRuntime(Path(directory))
+            result = QCAST(
+                edge_width=1,
+                generation_window_ps=int(0.002 * SECOND),
+                swap_success_probability=1.0,
+                max_major_paths=1,
+                link_state_hops=2,
+            ).run(runtime, self._qcast_multihop_workload(fidelity_threshold=0.98))
+
+        self.assertEqual((result.num_requests, result.num_success), (1, 0))
+        row = result.request_results[0]
+        self.assertEqual(row.failure_reason, "round1_qcast_deadline")
+        self.assertEqual(row.round2_pairs, 0)
+        self.assertGreater(row.pairs_rejected_fidelity, 0)
+        diagnostics = runtime.last_diagnostics["workload_diagnostics"]
+        self.assertGreater(diagnostics["counters"]["pairs_rejected_fidelity"], 0)
+        self.assertTrue(all(diagnostics["all_memories_raw_at_end"].values()))
 
     def test_acp_reuses_multiple_pairs_without_exceeding_cap(self):
         with tempfile.TemporaryDirectory() as directory:

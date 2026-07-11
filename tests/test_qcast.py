@@ -41,10 +41,10 @@ class QCASTPlannerTest(unittest.TestCase):
         self.assertEqual(algorithm.edge_width, 4)
 
     def test_qcast_rejects_unintegrated_workloads(self):
-        workload = SimpleNamespace(sequence_adapter="qpq")
+        workload = SimpleNamespace(sequence_adapter="single_pair")
         with tempfile.TemporaryDirectory() as directory:
             runtime = SequenceRuntime(Path(directory))
-            with self.assertRaisesRegex(NotImplementedError, "intentionally deferred"):
+            with self.assertRaisesRegex(NotImplementedError, "concurrent_pairs and QPQ"):
                 QCAST().run(runtime, workload)
 
     def test_ext_matches_single_hop_binomial_expectation(self):

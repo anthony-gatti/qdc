@@ -53,6 +53,11 @@ sequencing. The workload sees only the shared demand/callback contract.
   k-hop reports arrive. Recovery choices are constrained to the same reserved
   segment information, but this is not a node-by-node implementation of the
   paper's distributed XOR procedure.
-- Purification and QPQ integration are intentionally deferred. The initial
-  workload is `concurrent_pairs`, which supports concurrent QDC-originated Bell
-  pair demands and also runs through ODO for baseline comparison.
+- Purification is intentionally deferred.
+- Both `concurrent_pairs` and QPQ use the shared demand/callback contract. For
+  QPQ, the QDC router controls Q-CAST slots while each query retains its client
+  and QDC endpoints. Round two is submitted only after the exact round-one pair
+  quota is delivered; round and transaction deadlines remain workload-owned.
+- Width greater than one creates additional physical midpoint BSM/channel
+  lanes only for Q-CAST. Cross-algorithm comparisons should use width one until
+  ODO and ACP share a multi-channel topology adapter.

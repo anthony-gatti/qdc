@@ -77,14 +77,28 @@ class SinglePairSequenceAdapter(SequenceWorkloadAdapter):
 class QPQSequenceAdapter(SequenceWorkloadAdapter):
     def __init__(self, network_topology, workload, algorithm_name: str, served_path_observer=None, algorithm=None):
         super().__init__(network_topology, workload, algorithm_name, served_path_observer, algorithm)
-        self.services = {
-            router.name: SequenceDemandService(router, served_path_observer)
-            for router in network_topology.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER)
-        }
-        self.transactions = [
-            QPQTransaction(spec, self.services[spec.source].submit)
-            for spec in workload.queries()
-        ]
+        routers = network_topology.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER)
+        if algorithm_name == "qcast":
+            self.scheduler = QCASTDemandScheduler(
+                network_topology,
+                algorithm,
+                workload.controller_node,
+            )
+            self.services = None
+            self.transactions = [
+                QPQTransaction(spec, self.scheduler.submit)
+                for spec in workload.queries()
+            ]
+        else:
+            self.scheduler = None
+            self.services = {
+                router.name: SequenceDemandService(router, served_path_observer)
+                for router in routers
+            }
+            self.transactions = [
+                QPQTransaction(spec, self.services[spec.source].submit)
+                for spec in workload.queries()
+            ]
 
     def schedule(self) -> None:
         timeline = self.network_topology.get_timeline()
@@ -97,8 +111,11 @@ class QPQSequenceAdapter(SequenceWorkloadAdapter):
 
     def finalize(self) -> None:
         now = self.network_topology.get_timeline().now()
-        for service in self.services.values():
-            service.finalize(now)
+        if self.scheduler is not None:
+            self.scheduler.finalize(now)
+        else:
+            for service in self.services.values():
+                service.finalize(now)
         for transaction in self.transactions:
             transaction.finalize(now)
 
@@ -106,7 +123,9 @@ class QPQSequenceAdapter(SequenceWorkloadAdapter):
         return BackendResult(
             backend_name=self.algorithm_name,
             seed=self.workload.seed,
-            num_nodes=len(self.services),
+            num_nodes=len(self.network_topology.get_nodes_by_type(
+                RouterNetTopo.QUANTUM_ROUTER
+            )),
             request_results=[
                 transaction.to_request_result()
                 for transaction in sorted(self.transactions, key=lambda item: item.spec.query_id)
@@ -114,6 +133,10 @@ class QPQSequenceAdapter(SequenceWorkloadAdapter):
         )
 
     def diagnostics(self) -> dict:
+        if self.scheduler is not None:
+            diagnostics = self.scheduler.diagnostics()
+            diagnostics["transactions"] = self._transaction_diagnostics()
+            return diagnostics
         counters = Counter()
         counters_by_node = {}
         events = []
@@ -125,14 +148,17 @@ class QPQSequenceAdapter(SequenceWorkloadAdapter):
             "counters": dict(counters),
             "counters_by_node": counters_by_node,
             "events": sorted(events, key=lambda event: event.get("time_ps", 0)),
-            "transactions": {
-                str(transaction.spec.query_id): {
-                    "success": transaction.success,
-                    "failure_reason": transaction.failure_reason,
-                    "rounds_started": sorted(transaction.rounds),
-                }
-                for transaction in self.transactions
-            },
+            "transactions": self._transaction_diagnostics(),
+        }
+
+    def _transaction_diagnostics(self) -> dict:
+        return {
+            str(transaction.spec.query_id): {
+                "success": transaction.success,
+                "failure_reason": transaction.failure_reason,
+                "rounds_started": sorted(transaction.rounds),
+            }
+            for transaction in self.transactions
         }
 
 

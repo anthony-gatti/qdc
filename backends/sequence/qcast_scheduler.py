@@ -165,6 +165,13 @@ class QCASTDemandScheduler:
             return
         context.terminal = True
         self.counters["demands_failed_deadline"] += 1
+        self.events.append({
+            "event": "demand_failed",
+            "time_ps": self.timeline.now(),
+            "demand_id": context.demand.demand_id,
+            "reason": "qcast_deadline",
+            "pairs_delivered": len(context.deliveries),
+        })
         context.callbacks.on_demand_failed(
             context.demand,
             self.timeline.now(),
@@ -542,14 +549,16 @@ class QCASTDemandScheduler:
             self.counters["pairs_rejected_fidelity"] += 1
             context.callbacks.on_pair_rejected(context.demand, fidelity)
             return
+        qcast_role = "recovery" if used_recovery else "major"
         elementary_sources = tuple({
-            "source": "qcast_recovery" if used_recovery else "qcast_major",
+            "source": "application",
+            "qcast_role": qcast_role,
             "link": assignment.key,
         } for assignment in assignments)
         delivery = PairDelivery(
             timestamp_ps=self.timeline.now(),
             fidelity=fidelity,
-            generation_source="qcast_recovery" if used_recovery else "qcast_major",
+            generation_source="application",
             elementary_sources=elementary_sources,
         )
         context.deliveries.append(delivery)
@@ -557,9 +566,24 @@ class QCASTDemandScheduler:
         self.counters["end_to_end_pairs_delivered"] += 1
         if used_recovery:
             self.counters["end_to_end_pairs_delivered_recovery"] += 1
+        self.events.append({
+            "event": "pair_delivered",
+            "time_ps": self.timeline.now(),
+            "demand_id": context.demand.demand_id,
+            "fidelity": fidelity,
+            "path": list(nodes),
+            "qcast_role": qcast_role,
+        })
         if len(context.deliveries) >= context.demand.pair_count:
             context.terminal = True
             self.counters["demands_completed"] += 1
+            self.events.append({
+                "event": "demand_completed",
+                "time_ps": self.timeline.now(),
+                "demand_id": context.demand.demand_id,
+                "pairs_delivered": len(context.deliveries),
+                "path": list(nodes),
+            })
             context.callbacks.on_demand_completed(
                 context.demand,
                 self.timeline.now(),
@@ -591,6 +615,13 @@ class QCASTDemandScheduler:
             if context.terminal:
                 continue
             context.terminal = True
+            self.events.append({
+                "event": "demand_failed",
+                "time_ps": now_ps,
+                "demand_id": context.demand.demand_id,
+                "reason": "simulation_end",
+                "pairs_delivered": len(context.deliveries),
+            })
             context.callbacks.on_demand_failed(
                 context.demand,
                 now_ps,
@@ -607,6 +638,7 @@ class QCASTDemandScheduler:
                 for info in router.resource_manager.memory_manager
             )
         return {
+            "controller_node": self.controller.name,
             "counters": dict(self.counters),
             "events": self.events,
             "max_allocated_memories_by_node": dict(self.max_allocated_by_node),
