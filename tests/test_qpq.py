@@ -6,7 +6,7 @@ from pathlib import Path
 
 from algorithms.acp import AdaptiveContinuous
 from algorithms.odo import ShortestPathOnDemand
-from algorithms.qcast import QCAST
+from algorithms.qcast import QCAST, QCAST_CONTROL_PAPER_DISTRIBUTED
 from algorithms.registry import create_algorithm
 from backends.sequence.runtime import SequenceRuntime
 from common import SECOND
@@ -297,6 +297,31 @@ class QPQSequenceIntegrationTest(unittest.TestCase):
         self.assertEqual(len(submissions), 2)
         self.assertEqual(len(completions), 2)
         self.assertEqual(submissions[1]["time_ps"], completions[0]["time_ps"])
+
+    def test_distributed_qcast_completes_both_qpq_rounds(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = SequenceRuntime(Path(directory))
+            result = QCAST(
+                edge_width=3,
+                generation_window_ps=int(0.003 * SECOND),
+                max_major_paths=1,
+                link_state_hops=1,
+                control_mode=QCAST_CONTROL_PAPER_DISTRIBUTED,
+            ).run(runtime, self._workload())
+
+        self.assertEqual((result.num_requests, result.num_success), (1, 1))
+        row = result.request_results[0]
+        self.assertEqual((row.round1_pairs, row.round2_pairs), (3, 3))
+        self.assertEqual(len(row.pair_arrival_ms), 6)
+        diagnostics = runtime.last_diagnostics["workload_diagnostics"]
+        self.assertEqual(diagnostics["control_mode"], "paper_distributed")
+        self.assertEqual(diagnostics["counters"]["demands_completed"], 2)
+        self.assertGreaterEqual(len(diagnostics["distributed_decisions"]), 2)
+        self.assertEqual(
+            len(diagnostics["distributed_decisions"]),
+            diagnostics["counters"]["distributed_major_path_decisions"],
+        )
+        self.assertTrue(all(diagnostics["all_memories_raw_at_end"].values()))
 
     def test_shared_link_parallelism_is_visible_to_all_algorithms(self):
         workload = replace(self._workload(), link_parallelism=3)

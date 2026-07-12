@@ -10,6 +10,7 @@ from sequence.resource_management.memory_manager import MemoryInfo
 
 from algorithms.qcast import (
     QCAST,
+    QCAST_CONTROL_PAPER_DISTRIBUTED,
     QCASTDemand,
     QCASTEdge,
     QCASTPath,
@@ -25,6 +26,7 @@ from backends.sequence.qcast_scheduler import (
     QCASTPathAllocation,
     single_heralded_attempt_success_probability,
 )
+from backends.sequence.qcast_distributed import QCASTDistributedDemandScheduler
 from backends.sequence.runtime import SequenceRuntime
 from backends.sequence.qcast_topology import expand_qcast_parallel_links
 from common import SECOND
@@ -40,6 +42,13 @@ class QCASTPlannerTest(unittest.TestCase):
         algorithm = create_algorithm("qcast", {"edge_width": 4})
         self.assertIsInstance(algorithm, QCAST)
         self.assertEqual(algorithm.edge_width, 4)
+
+    def test_registry_constructs_paper_distributed_qcast(self):
+        algorithm = create_algorithm("qcast_distributed", {"edge_width": 2})
+        self.assertIsInstance(algorithm, QCAST)
+        self.assertEqual(algorithm.config.name, "qcast_distributed")
+        self.assertEqual(algorithm.config.kind, "qcast")
+        self.assertEqual(algorithm.control_mode, QCAST_CONTROL_PAPER_DISTRIBUTED)
 
     def test_qcast_rejects_unintegrated_workloads(self):
         workload = SimpleNamespace(sequence_adapter="single_pair")
@@ -189,6 +198,18 @@ class QCASTPlannerTest(unittest.TestCase):
         self.assertEqual(nodes, ("a", "c", "b", "d"))
         self.assertTrue(used_recovery)
 
+        distributed = object.__new__(QCASTDistributedDemandScheduler)
+        selected = distributed._select_xor_path(
+            major_lane,
+            [QCASTPathAllocation(recovery_path, (recovery_lane,))],
+            slot.edge_success,
+            set(),
+        )
+        self.assertIsNotNone(selected)
+        nodes, _assignments, consumed = selected
+        self.assertEqual(nodes, ("a", "c", "b", "d"))
+        self.assertEqual(consumed, {"r0", "r1"})
+
     def test_recovery_selector_rejects_overlapping_segment_repairs(self):
         major_path = QCASTPath(
             "major-0", "d0", ("a", "b", "c", "d"), 1, 0.5,
@@ -250,6 +271,62 @@ class QCASTSequenceIntegrationTest(unittest.TestCase):
             runtime = SequenceRuntime(Path(directory))
             result = algorithm.run(runtime, workload)
         return result, runtime.last_diagnostics["workload_diagnostics"]
+
+    @staticmethod
+    def _heterogeneous_control_workload():
+        normal_distance_m = 1_000.0
+        remote_distance_m = 1_000_000.0
+        topology = generate_linear_topology(
+            8,
+            inter_node_distance_m=normal_distance_m,
+            memo_size=8,
+            adaptive_max_memory=0,
+            memory_fidelity=0.99,
+            memory_efficiency=1.0,
+            coherence_time_s=0.002,
+            gate_fidelity=0.99,
+            measurement_fidelity=0.99,
+            swapping_success_probability=0.9,
+            stop_time_s=0.08,
+            qdc_node_index=0,
+            encoding_type="single_heralded",
+            formalism="bell_diagonal",
+            seed=31,
+        )
+        link_distances = [normal_distance_m] * 6 + [remote_distance_m]
+        for channel in topology["qchannels"]:
+            if channel["destination"] == "BSM_6_7":
+                channel["distance"] = remote_distance_m / 2
+        for channel in topology["cchannels"]:
+            source, destination = channel["source"], channel["destination"]
+            if source.startswith("router_") and destination.startswith("router_"):
+                left, right = sorted((
+                    int(source.split("_")[1]),
+                    int(destination.split("_")[1]),
+                ))
+                channel["delay"] = sum(link_distances[left:right]) / SPEED_OF_LIGHT
+            elif source == "BSM_6_7" or destination == "BSM_6_7":
+                channel["delay"] = remote_distance_m / (2 * SPEED_OF_LIGHT)
+
+        return ConcurrentPairWorkload(
+            num_requests=1,
+            seed=31,
+            num_nodes=8,
+            qdc_node_index=0,
+            topology_type="linear",
+            memories_per_node=8,
+            coherence_time_s=0.002,
+            simulation_end_time_s=0.08,
+            request_override=(ConcurrentPairSpec(
+                0,
+                "router_0",
+                "router_1",
+                int(0.01 * SECOND),
+                int(0.07 * SECOND),
+                fidelity_threshold=0.26,
+            ),),
+            topology_override=topology,
+        )
 
     def test_direct_pair_includes_control_and_generation_phases(self):
         start = int(0.005 * SECOND)
@@ -363,59 +440,7 @@ class QCASTSequenceIntegrationTest(unittest.TestCase):
         )
 
     def test_central_p4_barrier_can_outwait_a_local_path(self):
-        normal_distance_m = 1_000.0
-        remote_distance_m = 1_000_000.0
-        topology = generate_linear_topology(
-            8,
-            inter_node_distance_m=normal_distance_m,
-            memo_size=8,
-            adaptive_max_memory=0,
-            memory_fidelity=0.99,
-            memory_efficiency=1.0,
-            coherence_time_s=0.002,
-            gate_fidelity=0.99,
-            measurement_fidelity=0.99,
-            swapping_success_probability=0.9,
-            stop_time_s=0.08,
-            qdc_node_index=0,
-            encoding_type="single_heralded",
-            formalism="bell_diagonal",
-            seed=31,
-        )
-        link_distances = [normal_distance_m] * 6 + [remote_distance_m]
-        for channel in topology["qchannels"]:
-            if channel["destination"] == "BSM_6_7":
-                channel["distance"] = remote_distance_m / 2
-        for channel in topology["cchannels"]:
-            source, destination = channel["source"], channel["destination"]
-            if source.startswith("router_") and destination.startswith("router_"):
-                left, right = sorted((
-                    int(source.split("_")[1]),
-                    int(destination.split("_")[1]),
-                ))
-                channel["delay"] = sum(link_distances[left:right]) / SPEED_OF_LIGHT
-            elif source == "BSM_6_7" or destination == "BSM_6_7":
-                channel["delay"] = remote_distance_m / (2 * SPEED_OF_LIGHT)
-
-        workload = ConcurrentPairWorkload(
-            num_requests=1,
-            seed=31,
-            num_nodes=8,
-            qdc_node_index=0,
-            topology_type="linear",
-            memories_per_node=8,
-            coherence_time_s=0.002,
-            simulation_end_time_s=0.08,
-            request_override=(ConcurrentPairSpec(
-                0,
-                "router_0",
-                "router_1",
-                int(0.01 * SECOND),
-                int(0.07 * SECOND),
-                fidelity_threshold=0.26,
-            ),),
-            topology_override=topology,
-        )
+        workload = self._heterogeneous_control_workload()
         result, diagnostics = self._run(
             workload,
             QCAST(
@@ -431,6 +456,35 @@ class QCASTSequenceIntegrationTest(unittest.TestCase):
         self.assertEqual((result.num_requests, result.num_success), (1, 0))
         path_timing = diagnostics["timing"]["slots"][0]["major_path_p3_readiness"][0]
         self.assertGreater(path_timing["global_barrier_excess_ps"], int(0.004 * SECOND))
+
+    def test_paper_distributed_p4_ignores_unrelated_remote_link(self):
+        workload = self._heterogeneous_control_workload()
+        result, diagnostics = self._run(
+            workload,
+            QCAST(
+                edge_width=1,
+                generation_window_ps=int(0.001 * SECOND),
+                control_processing_delay_ps=int(0.0001 * SECOND),
+                link_state_hops=1,
+                max_major_paths=1,
+                max_hops=8,
+                control_mode=QCAST_CONTROL_PAPER_DISTRIBUTED,
+            ),
+        )
+
+        self.assertEqual((result.num_requests, result.num_success), (1, 1))
+        self.assertGreater(result.request_results[0].fidelity, 0.26)
+        path_timing = diagnostics["timing"]["slots"][0]["major_path_p3_readiness"][0]
+        self.assertLess(path_timing["global_barrier_excess_ps"], 10)
+        self.assertEqual(diagnostics["control_mode"], "paper_distributed")
+        self.assertEqual(
+            diagnostics["locality_invariants"]["network_wide_p4_barriers"],
+            0,
+        )
+        self.assertTrue(
+            diagnostics["locality_invariants"]["all_decisions_path_scoped"]
+        )
+        self.assertTrue(all(diagnostics["all_memories_raw_at_end"].values()))
 
     def test_concurrent_pair_workload_remains_usable_by_odo(self):
         start = int(0.005 * SECOND)
@@ -660,6 +714,75 @@ class QCASTSequenceIntegrationTest(unittest.TestCase):
             diagnostics["counters"]["end_to_end_pairs_delivered_recovery"],
             0,
         )
+        self.assertTrue(all(diagnostics["all_memories_raw_at_end"].values()))
+
+    def test_distributed_recovery_repairs_forced_major_link_failure(self):
+        start = int(0.005 * SECOND)
+        workload = ConcurrentPairWorkload(
+            num_requests=1,
+            seed=0,
+            num_nodes=5,
+            qdc_node_index=2,
+            topology_type="hub_spoke",
+            extra_mesh_edges=1,
+            inter_node_distance_m=1_000,
+            memories_per_node=20,
+            simulation_end_time_s=0.06,
+            request_override=(ConcurrentPairSpec(
+                0,
+                "router_2",
+                "router_0",
+                start,
+                int(0.05 * SECOND),
+            ),),
+        )
+        algorithm = QCAST(
+            edge_width=2,
+            generation_window_ps=int(0.004 * SECOND),
+            swap_success_probability=1.0,
+            max_major_paths=1,
+            link_state_hops=3,
+            control_mode=QCAST_CONTROL_PAPER_DISTRIBUTED,
+        )
+        original_stop_generation = QCASTDistributedDemandScheduler.stop_generation
+        forced_failures = []
+
+        def stop_with_major_failure(scheduler, slot_id):
+            if not forced_failures:
+                major = scheduler.slot.plan.major_paths[0]
+                assignment = scheduler.slot.allocations[major.path_id].lanes[0].edges[0]
+                for node_name in (assignment.left, assignment.right):
+                    memory = scheduler._memory(
+                        node_name,
+                        assignment.memory_index(node_name),
+                    )
+                    scheduler.routers[node_name].resource_manager.update(
+                        None,
+                        memory,
+                        MemoryInfo.RAW,
+                    )
+                forced_failures.append(assignment.lane_id)
+            return original_stop_generation(scheduler, slot_id)
+
+        with patch.object(
+            QCASTDistributedDemandScheduler,
+            "stop_generation",
+            stop_with_major_failure,
+        ):
+            result, diagnostics = self._run(workload, algorithm)
+
+        self.assertEqual((result.num_requests, result.num_success), (1, 1))
+        self.assertEqual(len(forced_failures), 1)
+        self.assertGreater(diagnostics["counters"]["major_lanes_recovered"], 0)
+        self.assertGreater(
+            diagnostics["counters"]["end_to_end_pairs_delivered_recovery"],
+            0,
+        )
+        decision = diagnostics["distributed_decisions"][0]
+        self.assertTrue(any(
+            selection.get("used_recovery")
+            for selection in decision["selections"]
+        ))
         self.assertTrue(all(diagnostics["all_memories_raw_at_end"].values()))
 
     def test_recovery_reservations_use_residual_resources(self):

@@ -17,11 +17,15 @@ SeQUeNCe-independent planner and a SeQUeNCe execution adapter.
    generation for `generation_window_ps`. Failed attempts retry through normal
    resource-manager rules until the window closes.
 5. Routers exchange explicit link-state messages with nodes up to
-   `link_state_hops` away. P4 waits for the worst modeled processing and
-   propagation delay.
-6. Successful major lanes are used directly. Failed major edges may be
-   replaced only by complete, successful, non-overlapping recovery lanes that
-   were reserved for the affected segments.
+   `link_state_hops` away. In `qcast_distributed`, each selected major path
+   enters P4 as soon as the routers on that path and its reserved recovery
+   paths have completed their local P3 exchanges. Unrelated routers cannot
+   delay that decision. The retained `qcast` profile waits at the historical
+   network-wide barrier.
+6. Successful major lanes are used directly. The distributed profile applies
+   the paper's deterministic XOR over the major lane and successful,
+   contention-free recovery loops. It prefers shorter recovery paths and
+   allows each physical recovery lane to support at most one delivered pair.
 7. Multi-hop paths use upstream `EntanglementSwappingA/B`. Delivery is recorded
    only after the endpoint memories confirm the expected remote memory owners
    and the fidelity threshold is met.
@@ -37,9 +41,17 @@ algorithms' router links into that many independent midpoint BSM/channel lanes.
 Q-CAST's `edge_width` is only a path-scheduling cap over the shared lanes. It
 does not create hardware.
 
-`backends/sequence/qcast_scheduler.py` owns slot timing, physical lane
-allocation, control messages, rule installation, recovery selection, and swap
-sequencing. The workload sees only the shared demand/callback contract.
+`backends/sequence/qcast_scheduler.py` owns common slot timing, physical lane
+allocation, control messages, rule installation, and swap sequencing.
+`backends/sequence/qcast_distributed.py` is the paper-local P3/P4 policy. It
+constructs each recovery decision only from state actually available in the
+selected path's router-local views, filtered to that major path and its
+pre-reserved recovery lanes. The coordinator schedules events on the common
+SeQUeNCe timeline but has no network-wide P4 release condition. The workload
+sees only the shared demand/callback contract.
+
+Use `qcast_distributed` for paper-local experiments. `qcast` is retained as a
+centralized comparison profile so previous results remain reproducible.
 
 `experiments/qcast_control_timing.md` records timing instrumentation for the
 current centralized baseline and the regression scenario for the distributed
@@ -53,10 +65,16 @@ P3/P4 port.
 - The analytical per-window link probability follows native v1.0.0
   single-heralded semantics and is an estimate; diagnostics report all inputs
   needed to compare it with observed lane yield.
-- A central scheduler deterministically orchestrates P4 after all modeled
-  k-hop reports arrive. Recovery choices are constrained to the same reserved
-  segment information, but this is not a node-by-node implementation of the
-  paper's distributed XOR procedure.
+- Q-CAST P2 still uses globally consistent topology and source-destination
+  inputs, as specified by the paper. The QDC router disseminates that
+  deterministic plan with modeled classical delay; this occurs before pair
+  generation and is not a dynamic global-link-state dependency.
+- The distributed scheduler is a simulation coordinator, not a separate
+  process per physical router. Its P3 message receipt, decision inputs, and P4
+  release times are nevertheless router-local and auditable in diagnostics.
+- Swaps run through SeQUeNCe's physical swapping protocols and are sequenced
+  along the selected final path. The paper and Kotlin reference abstract P4
+  swapping more coarsely and do not supply gate-level timing.
 - Purification is intentionally deferred.
 - Both `concurrent_pairs` and QPQ use the shared demand/callback contract. For
   QPQ, the QDC router controls Q-CAST slots while each query retains its client

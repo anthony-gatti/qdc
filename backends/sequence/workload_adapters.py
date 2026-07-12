@@ -10,6 +10,7 @@ from sequence.kernel.event import Event
 from sequence.kernel.process import Process
 from sequence.topology.router_net_topo import RouterNetTopo
 
+from algorithms.qcast import QCAST_CONTROL_PAPER_DISTRIBUTED
 from backends.sequence.demand_service import SequenceDemandService
 from backends.sequence.qcast_scheduler import QCASTDemandScheduler
 from pair_app import PairRequestApp, collect_pair_results
@@ -78,8 +79,8 @@ class QPQSequenceAdapter(SequenceWorkloadAdapter):
     def __init__(self, network_topology, workload, algorithm_name: str, served_path_observer=None, algorithm=None):
         super().__init__(network_topology, workload, algorithm_name, served_path_observer, algorithm)
         routers = network_topology.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER)
-        if algorithm_name == "qcast":
-            self.scheduler = QCASTDemandScheduler(
+        if getattr(getattr(algorithm, "config", None), "kind", None) == "qcast":
+            self.scheduler = self._qcast_scheduler(
                 network_topology,
                 algorithm,
                 workload.controller_node,
@@ -99,6 +100,18 @@ class QPQSequenceAdapter(SequenceWorkloadAdapter):
                 QPQTransaction(spec, self.services[spec.source].submit)
                 for spec in workload.queries()
             ]
+
+    @staticmethod
+    def _qcast_scheduler(network_topology, algorithm, controller_node):
+        if algorithm.control_mode == QCAST_CONTROL_PAPER_DISTRIBUTED:
+            from backends.sequence.qcast_distributed import QCASTDistributedDemandScheduler
+
+            return QCASTDistributedDemandScheduler(
+                network_topology,
+                algorithm,
+                controller_node,
+            )
+        return QCASTDemandScheduler(network_topology, algorithm, controller_node)
 
     def schedule(self) -> None:
         timeline = self.network_topology.get_timeline()
@@ -180,8 +193,14 @@ class ConcurrentPairSequenceAdapter(SequenceWorkloadAdapter):
             for spec in workload.requests()
         ]
         routers = network_topology.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER)
-        if algorithm_name == "qcast":
-            self.scheduler = QCASTDemandScheduler(
+        if getattr(getattr(algorithm, "config", None), "kind", None) == "qcast":
+            if algorithm.control_mode == QCAST_CONTROL_PAPER_DISTRIBUTED:
+                from backends.sequence.qcast_distributed import QCASTDistributedDemandScheduler
+
+                scheduler_class = QCASTDistributedDemandScheduler
+            else:
+                scheduler_class = QCASTDemandScheduler
+            self.scheduler = scheduler_class(
                 network_topology,
                 algorithm,
                 workload.controller_node,

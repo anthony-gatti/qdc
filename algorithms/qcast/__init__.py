@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from algorithms.base import AlgorithmConfig, RoutingAlgorithm
 from algorithms.qcast.planner import (
@@ -13,6 +13,13 @@ from algorithms.qcast.planner import (
     QCASTPlanner,
     edge_key,
     expected_throughput,
+)
+
+QCAST_CONTROL_CENTRALIZED = "centralized"
+QCAST_CONTROL_PAPER_DISTRIBUTED = "paper_distributed"
+QCAST_CONTROL_MODES = (
+    QCAST_CONTROL_CENTRALIZED,
+    QCAST_CONTROL_PAPER_DISTRIBUTED,
 )
 
 
@@ -29,7 +36,9 @@ class QCAST(RoutingAlgorithm):
     max_recovery_paths_per_major: int = 12
     max_major_paths: int = 200
     max_hops: int = 8
-    config: AlgorithmConfig = AlgorithmConfig(name="qcast", kind="qcast")
+    control_mode: str = QCAST_CONTROL_CENTRALIZED
+    algorithm_name: str | None = None
+    config: AlgorithmConfig = field(init=False)
 
     def __post_init__(self) -> None:
         if self.edge_width <= 0 or self.generation_window_ps <= 0:
@@ -44,6 +53,14 @@ class QCAST(RoutingAlgorithm):
             raise ValueError("Q-CAST recovery path limit cannot be negative")
         if self.max_major_paths <= 0 or self.max_hops <= 0:
             raise ValueError("Q-CAST path limits must be positive")
+        if self.control_mode not in QCAST_CONTROL_MODES:
+            raise ValueError(f"Unsupported Q-CAST control mode: {self.control_mode}")
+        name = self.algorithm_name or (
+            "qcast_distributed"
+            if self.control_mode == QCAST_CONTROL_PAPER_DISTRIBUTED
+            else "qcast"
+        )
+        object.__setattr__(self, "config", AlgorithmConfig(name=name, kind="qcast"))
 
     def create_planner(self) -> QCASTPlanner:
         return QCASTPlanner(
@@ -61,6 +78,9 @@ class QCAST(RoutingAlgorithm):
 
 __all__ = [
     "QCAST",
+    "QCAST_CONTROL_CENTRALIZED",
+    "QCAST_CONTROL_PAPER_DISTRIBUTED",
+    "QCAST_CONTROL_MODES",
     "QCASTDemand",
     "QCASTEdge",
     "QCASTPath",

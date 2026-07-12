@@ -116,6 +116,8 @@ class _Slot:
     link_state_receipts: dict[str, set[str]] = field(default_factory=dict)
     local_p3_ready_ps: dict[str, int] = field(default_factory=dict)
     global_p4_start_ps: int | None = None
+    path_p4_start_ps: dict[str, int] = field(default_factory=dict)
+    delivery_p4_start_ps: dict[str, int] = field(default_factory=dict)
     aborted_deliveries: set[str] = field(default_factory=set)
     cleanup_time_ps: int = 0
 
@@ -372,8 +374,25 @@ class QCASTDemandScheduler:
         slot = self.slot
         if slot is None or slot.slot_id != slot_id:
             return
-        self._expire_slot_rules(slot)
+        self._close_generation(slot)
+        maximum_state_delay = self._broadcast_link_state(slot)
+        p4_start = self.timeline.now() + maximum_state_delay + 1
+        slot.global_p4_start_ps = p4_start
+        for path in slot.plan.major_paths:
+            slot.path_p4_start_ps[path.path_id] = p4_start
+        self.timeline.schedule(Event(p4_start, Process(self, "start_swapping", [slot_id])))
+        self.events.append({
+            "event": "generation_window_closed",
+            "slot_id": slot_id,
+            "time_ps": self.timeline.now(),
+            "successful_lanes": sum(slot.edge_success.values()),
+            "total_lanes": len(slot.edge_success),
+            "p4_start_ps": p4_start,
+            "control_mode": self.algorithm.control_mode,
+        })
 
+    def _close_generation(self, slot: _Slot) -> None:
+        self._expire_slot_rules(slot)
         for allocation in slot.allocations.values():
             for lane in allocation.lanes:
                 for assignment in lane.edges:
@@ -388,9 +407,14 @@ class QCASTDemandScheduler:
                         )
                     self.counters["elementary_lanes_succeeded" if success else "elementary_lanes_failed"] += 1
 
+    def _broadcast_link_state(self, slot: _Slot) -> int:
         maximum_state_delay = self.algorithm.control_processing_delay_ps
         for router_name in self.routers:
-            if not self._nodes_within_hops(router_name, self.algorithm.link_state_hops):
+            expected = set(self._nodes_within_hops(
+                router_name,
+                self.algorithm.link_state_hops,
+            )) - {router_name}
+            if not expected:
                 slot.local_p3_ready_ps.setdefault(router_name, self.timeline.now())
         for sender in sorted(self.routers):
             payload = {
@@ -408,22 +432,11 @@ class QCASTDemandScheduler:
                 maximum_state_delay = max(maximum_state_delay, delay)
                 self.routers[sender].send_message(
                     receiver,
-                    QCASTMessage(QCASTMessageType.LINK_STATE, slot_id, payload),
+                    QCASTMessage(QCASTMessageType.LINK_STATE, slot.slot_id, payload),
                     sender_delay=self.algorithm.control_processing_delay_ps,
                 )
                 self.counters["link_state_messages_sent"] += 1
-
-        p4_start = self.timeline.now() + maximum_state_delay + 1
-        slot.global_p4_start_ps = p4_start
-        self.timeline.schedule(Event(p4_start, Process(self, "start_swapping", [slot_id])))
-        self.events.append({
-            "event": "generation_window_closed",
-            "slot_id": slot_id,
-            "time_ps": self.timeline.now(),
-            "successful_lanes": sum(slot.edge_success.values()),
-            "total_lanes": len(slot.edge_success),
-            "p4_start_ps": p4_start,
-        })
+        return maximum_state_delay
 
     def start_swapping(self, slot_id: int) -> None:
         slot = self.slot
@@ -787,7 +800,10 @@ class QCASTDemandScheduler:
         earliest_success = min(success_times) if success_times else None
         latest_success = max(success_times) if success_times else None
         path_ready = max(relevant_ready) if relevant_ready else None
-        p4_start = slot.global_p4_start_ps
+        p4_start = slot.delivery_p4_start_ps.get(
+            delivery_id,
+            slot.global_p4_start_ps,
+        )
         self.delivery_timing_records.append({
             "slot_id": slot.slot_id,
             "delivery_id": delivery_id,
@@ -798,6 +814,8 @@ class QCASTDemandScheduler:
             "latest_elementary_success_ps": latest_success,
             "path_local_p3_ready_ps": path_ready,
             "global_p4_start_ps": p4_start,
+            "p4_start_ps": p4_start,
+            "control_mode": self.algorithm.control_mode,
             "delivery_ps": self.timeline.now(),
             "oldest_pair_age_at_global_p4_ps": (
                 p4_start - earliest_success
@@ -835,13 +853,16 @@ class QCASTDemandScheduler:
                 if node in slot.local_p3_ready_ps
             ]
             path_ready = max(ready_times) if ready_times else None
+            path_p4_start = slot.path_p4_start_ps.get(path.path_id, p4_start)
             major_path_readiness.append({
+                "path_id": path.path_id,
                 "demand_id": path.demand_id,
                 "path": list(path.nodes),
                 "local_p3_ready_ps": path_ready,
+                "p4_start_ps": path_p4_start,
                 "global_barrier_excess_ps": (
-                    max(0, p4_start - path_ready)
-                    if p4_start is not None and path_ready is not None else None
+                    max(0, path_p4_start - path_ready)
+                    if path_p4_start is not None and path_ready is not None else None
                 ),
             })
         self.slot_timing_records.append({
@@ -854,6 +875,8 @@ class QCASTDemandScheduler:
             "local_p3_ready_ps_by_node": dict(slot.local_p3_ready_ps),
             "major_path_p3_readiness": major_path_readiness,
             "global_p4_start_ps": p4_start,
+            "path_p4_start_ps": dict(slot.path_p4_start_ps),
+            "control_mode": self.algorithm.control_mode,
             "global_wait_after_earliest_success_ps": (
                 p4_start - min(slot.elementary_success_ps.values())
                 if p4_start is not None and slot.elementary_success_ps else None
@@ -1094,6 +1117,7 @@ class QCASTDemandScheduler:
         start_time: int,
         used_recovery: bool,
     ) -> int:
+        slot.delivery_p4_start_ps[delivery_id] = start_time
         if len(nodes) == 2:
             check_time = start_time + 1
         else:
