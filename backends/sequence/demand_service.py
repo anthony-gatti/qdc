@@ -41,6 +41,32 @@ class SequenceDemandService(RequestApp):
         self.counters = Counter()
         self.events: list[dict] = []
 
+    def schedule_reservation(self, reservation) -> None:
+        """Schedule reservation-scoped application ownership callbacks."""
+        if reservation.initiator == self.node.name:
+            self.path = reservation.path
+        for card in self.node.network_manager.get_timecards():
+            if reservation not in card.reservations:
+                continue
+            self.node.timeline.schedule(Event(
+                reservation.start_time,
+                Process(self, "add_memo_reservation_map", [
+                    card.memory_index,
+                    reservation,
+                ]),
+            ))
+            self.node.timeline.schedule(Event(
+                reservation.end_time,
+                Process(self, "remove_reservation_mapping", [
+                    card.memory_index,
+                    reservation,
+                ]),
+            ))
+
+    def remove_reservation_mapping(self, index: int, reservation) -> None:
+        if self.memo_to_reservation.get(index) == reservation:
+            self.memo_to_reservation.pop(index)
+
     def submit(self, demand: EntanglementDemand, callbacks: DemandCallbacks) -> None:
         if demand.source != self.node.name:
             raise ValueError(f"Demand source {demand.source} does not match service node {self.node.name}")
@@ -226,6 +252,7 @@ class SequenceDemandService(RequestApp):
         reservation = context.reservation
         if reservation is None:
             return
+        reservation.qdc_release_timecards_early = True
         self.node.resource_manager.expire_rules_by_reservation(reservation)
         for node_name in context.path:
             if node_name != self.node.name:

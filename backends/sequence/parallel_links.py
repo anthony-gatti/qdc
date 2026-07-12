@@ -157,6 +157,7 @@ def ensure_parallel_metrics(owner) -> dict:
             "generation_attempts": Counter(),
             "generation_successes": Counter(),
             "memory_high_watermark": 0,
+            "timecard_slots_released": 0,
         }
         owner.parallel_link_metrics = metrics
     return metrics
@@ -233,6 +234,31 @@ def parallel_eg_match_func(protocols, args):
 
 class ParallelResourceManager(ResourceManager):
     """Native ResourceManager with lane-specific generation rules."""
+
+    def expire_rules_by_reservation(self, reservation: Reservation) -> None:
+        """Release both active rules and admission-calendar ownership.
+
+        Upstream EARLY_EXPIRE messages stop the reservation's rules but leave
+        its MemoryTimeCard entries booked until the original end time. QPQ
+        submits round two as soon as round one completes, so those stale
+        entries can incorrectly reject the next round. The message carrying
+        this call already models classical propagation to remote path nodes.
+        """
+        super().expire_rules_by_reservation(reservation)
+        if not getattr(reservation, "qdc_release_timecards_early", False):
+            return
+        released = sum(
+            card.remove(reservation)
+            for card in self.owner.network_manager.get_timecards()
+        )
+        ensure_parallel_metrics(self.owner)["timecard_slots_released"] += released
+
+    def expire_reservation_memory(self, memory, reservation: Reservation) -> None:
+        """Reset a memory only while the expiring reservation still owns it."""
+        info = self.memory_manager.get_info_by_memory(memory)
+        card = self.owner.network_manager.get_timecards()[info.index]
+        if reservation in card.reservations:
+            self.update(None, memory, "RAW")
 
     def generate_load_rules(
         self,
@@ -335,10 +361,9 @@ class ParallelResourceManager(ResourceManager):
             if reservation in card.reservations:
                 self.owner.timeline.schedule(Event(
                     reservation.end_time,
-                    Process(self.owner.resource_manager, "update", [
-                        None,
+                    Process(self.owner.resource_manager, "expire_reservation_memory", [
                         self.owner.components[memory_array_name][card.memory_index],
-                        "RAW",
+                        reservation,
                     ]),
                     self.owner.timeline.schedule_counter,
                 ))
@@ -426,6 +451,7 @@ def collect_parallel_link_diagnostics(network_topology) -> dict:
             "final": dict(Counter(
                 info.state for info in router.resource_manager.memory_manager
             )),
+            "timecard_slots_released": metrics["timecard_slots_released"],
         }
         for metric_name in ("generation_attempts", "generation_successes"):
             for (left, right, middle), value in metrics[metric_name].items():

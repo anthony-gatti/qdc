@@ -24,15 +24,15 @@ with a four-memory cache cap.
 ```bash
 MPLCONFIGDIR=/tmp/matplotlib-qdc /home/amg671/.conda/envs/qdc/bin/python -u \
   experiments/run.py --config config/qpq_qcast_matched.yaml \
-  --output /tmp/qdc_shared_parallel_mesh_p1_final
+  --output /tmp/qdc_shared_parallel_mesh_p1_release_fix
 
 MPLCONFIGDIR=/tmp/matplotlib-qdc /home/amg671/.conda/envs/qdc/bin/python -u \
   experiments/run.py --config config/qpq_qcast_matched_parallel3.yaml \
-  --output /tmp/qdc_shared_parallel_mesh_p3_final
+  --output /tmp/qdc_shared_parallel_mesh_p3_release_fix
 
 MPLCONFIGDIR=/tmp/matplotlib-qdc /home/amg671/.conda/envs/qdc/bin/python -u \
   experiments/run.py --config config/qpq_qcast_direct_parallel3.yaml \
-  --output /tmp/qdc_shared_parallel_direct_p3_final
+  --output /tmp/qdc_shared_parallel_direct_p3_release_fix
 ```
 
 The mesh is a five-router hub-spoke topology centered on router 2 with three
@@ -50,21 +50,23 @@ TTS and fidelity are over successful queries only.
 | 1 | ACP freshest m4 | 9/9 | 61.235 | 59.701 | 108.703 | 0.980342 |
 | 1 | Q-CAST w1 | 9/9 | 182.100 | 162.500 | 393.700 | 0.977580 |
 | 3 | ODO | 9/9 | 38.101 | 35.301 | 79.602 | 0.981383 |
-| 3 | ACP freshest m4 | 6/9 | 36.868 | 40.001 | 50.001 | 0.990000 |
+| 3 | ACP freshest m4 | 9/9 | 37.801 | 39.301 | 59.601 | 0.980987 |
 | 3 | Q-CAST w3 | 9/9 | 61.911 | 45.300 | 147.100 | 0.977637 |
 
-The three ACP failures are `round2_reservation_rejected`, not deadline,
-fidelity, cache-cap, or ownership failures. With three lanes, native RSVP
-reserves up to three application memories per active link so it can use the
-shared hardware. This concurrent, 20-memory regime exposes admission control;
-it is not a result adjusted to make algorithms match.
+The initial three-lane pilot rejected one ACP round-two reservation per seed.
+The cause was stale admission ownership: upstream early expiration stopped a
+completed round's rules but left its memory timecards booked until the original
+deadline. QDC demand cancellation now releases those entries when the existing
+classical `EARLY_EXPIRE` message reaches each path node. Delayed application-map
+and memory cleanup is reservation-aware, so it cannot disturb a newer round
+that reuses the slot. The corrected run has zero reservation rejections.
 
 ## Direct Topology
 
 | Algorithm | Success | Mean TTS ms | Mean fidelity | Q-CAST role |
 | --- | ---: | ---: | ---: | --- |
 | ODO | 3/3 | 33.334 | 0.990000 | n/a |
-| ACP freshest m4 | 3/3 | 11.567 | 0.990000 | n/a |
+| ACP freshest m4 | 3/3 | 11.267 | 0.990000 | n/a |
 | Q-CAST w3 | 3/3 | 45.000 | 0.990000 | 18 major, 0 recovery |
 
 Q-CAST therefore schedules the same direct link but is not latency-identical to
@@ -76,7 +78,8 @@ Each `diagnostics.json` now includes:
 
 - `parallel_links.links`: physical channels, attempts, and successful
   elementary generations by lane.
-- `parallel_links.memory_occupancy`: high-watermark and final state by router.
+- `parallel_links.memory_occupancy`: high-watermark, final state, and released
+  application timecard slots by router.
 - `workload_diagnostics.scheduled_lane_usage_by_link`: Q-CAST scheduled use of
   each physical BSM lane.
 - `workload_diagnostics.counters`: selected paths and explicit major/recovery
@@ -89,17 +92,17 @@ supported pairs. Fewer paths at three lanes means fewer scheduling slots, not
 less physical hardware.
 
 All pilot memories end `RAW`. ACP's adaptive-cache high-watermark is at most 4
-per router and its reservation accounting is consistent. Integration tests cover
-shared three-channel visibility for all algorithms, Q-CAST memory allocation,
-and final RAW state.
+per router, its reservation accounting is consistent, and all matched runs have
+zero application reservation rejections. Integration tests cover shared
+three-channel visibility, reservation-safe round transitions, Q-CAST memory
+allocation, and final RAW state.
 
 ## Interpretation
 
 The prior Q-CAST width-three improvement was not an algorithm-only gain: three
 physical lanes were available only to Q-CAST. With shared hardware, ODO improves
-from 116.614 ms to 38.101 ms and Q-CAST from 182.100 ms to 61.911 ms. ACP's
-successful queries are also faster, but its admission behavior needs a focused
-capacity/concurrency study.
+from 116.614 ms to 38.101 ms and Q-CAST from 182.100 ms to 61.911 ms. ACP
+improves from 61.235 ms to 37.801 ms while retaining 9/9 success.
 
 Q-CAST uses genuine mesh recovery, but only 3 of 90 delivered three-lane pairs
 use recovery. These pilots do not establish an algorithmic multipath advantage

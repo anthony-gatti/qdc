@@ -420,6 +420,39 @@ class QPQSequenceIntegrationTest(unittest.TestCase):
             0,
         )
 
+    def test_completed_round_releases_timecards_before_next_round(self):
+        workload = QPQWorkload(
+            database_size_log=2,
+            num_clients=3,
+            queries_per_client=1,
+            round_deadline_s=0.8,
+            transaction_duration_s=1.5,
+            start_offset_s=0.03,
+            num_nodes=5,
+            qdc_node_index=2,
+            extra_mesh_edges=3,
+            inter_node_distance_m=20_000,
+            memories_per_node=20,
+            memory_efficiency=0.5,
+            swapping_success_probability=0.9,
+            link_parallelism=3,
+            simulation_end_time_s=1.6,
+            seed=0,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = SequenceRuntime(Path(directory))
+            result = AdaptiveContinuous(adaptive_max_memory=4).run(runtime, workload)
+
+        self.assertEqual((result.num_requests, result.num_success), (3, 3))
+        counters = runtime.last_diagnostics["workload_diagnostics"]["counters"]
+        self.assertEqual(counters.get("reservations_rejected", 0), 0)
+        occupancy = runtime.last_diagnostics["parallel_links"]["memory_occupancy"]
+        self.assertGreater(
+            sum(node["timecard_slots_released"] for node in occupancy.values()),
+            0,
+        )
+        self.assertTrue(all(node["final"] == {"RAW": 20} for node in occupancy.values()))
+
     def test_qpq_purification_skips_predicted_fidelity_loss(self):
         with tempfile.TemporaryDirectory() as directory:
             runtime = SequenceRuntime(Path(directory))

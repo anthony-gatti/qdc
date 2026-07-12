@@ -288,7 +288,11 @@ class ACPResourceManager(ParallelResourceManager):
         for card in timecards:
             if reservation in card.reservations:
                 memory = self.owner.components[memory_array_name][card.memory_index]
-                self.owner.timeline.schedule(Event(reservation.end_time, Process(self, "update", [None, memory, MemoryInfo.RAW]), self.owner.timeline.schedule_counter))
+                self.owner.timeline.schedule(Event(
+                    reservation.end_time,
+                    Process(self, "expire_reservation_memory", [memory, reservation]),
+                    self.owner.timeline.schedule_counter,
+                ))
 
     def _application_generation_rules(
         self,
