@@ -4,8 +4,10 @@ Standardized result collection for QPQ evaluation backends.
 
 import csv
 import json
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, fields
 from typing import List, Dict, Any, Optional
+
+OUTPUT_SCHEMA_VERSION = "2"
 
 
 @dataclass
@@ -23,6 +25,24 @@ class RequestResult:
     # Pair arrival times (ms, relative to query start). Flat list across rounds.
     # Empty for non-QPQ workloads or failed queries with no pairs delivered.
     pair_arrival_ms: List[float] = field(default_factory=list)
+    first_pair_arrival_ms: Optional[float] = None
+    round1_completion_ms: Optional[float] = None
+    round2_completion_ms: Optional[float] = None
+    round1_pairs: int = 0
+    round2_pairs: int = 0
+    expected_pairs: int = 0
+    pairs_rejected_fidelity: int = 0
+    # Deprecated compatibility aliases:
+    # delivered_background_pairs == delivered_pairs_with_background_contribution
+    # delivered_application_pairs == delivered_pairs_fully_fresh
+    delivered_background_pairs: int = 0
+    delivered_application_pairs: int = 0
+    delivered_pairs_with_background_contribution: int = 0
+    delivered_pairs_fully_background_supported: int = 0
+    delivered_pairs_partially_background_supported: int = 0
+    delivered_pairs_fully_fresh: int = 0
+    delivered_background_elementary_edges: int = 0
+    delivered_fresh_elementary_edges: int = 0
 
 
 @dataclass
@@ -67,9 +87,7 @@ class BackendResult:
         """
         if not self.request_results:
             return
-        fieldnames = ["request_id", "src", "dst", "start_time_ps",
-                      "time_to_serve_ms", "fidelity", "success",
-                      "failure_reason", "pair_arrival_ms"]
+        fieldnames = [item.name for item in fields(RequestResult)]
         with open(path, 'w', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()

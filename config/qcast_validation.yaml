@@ -1,0 +1,40 @@
+experiment:
+  algorithms: [qcast]
+  seeds: [42]
+  simulation_end_time_s: 0.1
+
+workload:
+  name: concurrent_pairs
+  request_count: 2
+  pair_count: 1
+  start_offset_s: 0.01
+  request_window_s: 0.06
+  fidelity_threshold: 0.7
+
+algorithm:
+  edge_width: 3
+  generation_window_s: 0.005
+  control_processing_delay_s: 0.0001
+  swap_success_probability: 0.9
+  link_state_hops: 3
+  recovery_paths_per_segment: 1
+  max_recovery_paths_per_major: 8
+  max_major_paths: 20
+  max_hops: 6
+
+hardware:
+  link_fidelity: 0.99
+  memory_efficiency: 1.0
+  memory_coherence_time_s: 5.0
+  memories_per_node: 12
+  gate_fidelity: 0.99
+  measurement_fidelity: 0.99
+  swapping_success_probability: 0.9
+
+topology:
+  type: linear
+  num_nodes: 3
+  inter_node_distance_m: 1000.0
+  qdc_node_index: 0
+  random_seed: 42
+  extra_mesh_edges: 0

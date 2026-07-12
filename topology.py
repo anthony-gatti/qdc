@@ -1,8 +1,8 @@
 """
-Generates SeQUeNCe-compatible JSON topology configs for QPQ evaluation.
+Generates SeQUeNCe-compatible JSON topology configs for QDC evaluation.
 
-Produces hub-and-spoke topologies with a QDC server at the center,
-compatible with both RouterNetTopo and RouterNetTopoAdaptive.
+Provides hub-spoke, linear, and ring router graphs for the supported
+SeQUeNCe v1.0.0 topology loaders.
 
 Output JSON matches the format used by the ACP paper's line_5-m4.json:
 explicit nodes, qchannels, cchannels.
@@ -20,6 +20,22 @@ import numpy as np
 SECOND = int(1e12)
 MILLISECOND = int(1e9)
 SPEED_OF_LIGHT = 2e-4  #km per picosecond in fiber
+CLASSICAL_TIMING_SEQUENCE = "sequence"
+CLASSICAL_TIMING_ACP_PAPER = "acp_paper"
+ACP_PAPER_END_NODE_PROCESSING_DELAY_PS = 100_000_000
+
+
+def classical_delay_ps(
+    propagation_delay_ps: float,
+    classical_timing_profile: str = CLASSICAL_TIMING_SEQUENCE,
+    end_node_processing_delay_ps: int = ACP_PAPER_END_NODE_PROCESSING_DELAY_PS,
+) -> float:
+    """Return modeled one-way classical-channel delay in picoseconds."""
+    if classical_timing_profile == CLASSICAL_TIMING_SEQUENCE:
+        return propagation_delay_ps
+    if classical_timing_profile == CLASSICAL_TIMING_ACP_PAPER:
+        return propagation_delay_ps + end_node_processing_delay_ps
+    raise ValueError(f"Unsupported classical timing profile: {classical_timing_profile}")
 
 def generate_hub_spoke_topology(
     num_nodes: int,
@@ -31,7 +47,10 @@ def generate_hub_spoke_topology(
     coherence_time_s: float = 5.0,
     gate_fidelity: float = 0.99,
     measurement_fidelity: float = 0.99,
+    swapping_success_probability: float = 1.0,
     attenuation: float = 0.0002,
+    classical_timing_profile: str = CLASSICAL_TIMING_SEQUENCE,
+    end_node_processing_delay_ps: int = ACP_PAPER_END_NODE_PROCESSING_DELAY_PS,
     stop_time_s: float = 60.0,
     seed: int = 42,
     extra_mesh_edges: int = 0,
@@ -92,6 +111,9 @@ def generate_hub_spoke_topology(
         "adaptive_max_memory": adaptive_max_memory,
         "encoding_type": encoding_type,
         "decoherence_errors": [1/3, 1/3, 1/3],
+        "EntanglementSwapping": {
+            "swapping_success_prob": swapping_success_probability,
+        },
     }
 
     # Router nodes
@@ -141,7 +163,11 @@ def generate_hub_spoke_topology(
     for u, v in graph.edges():
         a, b = min(u, v), max(u, v)
         bsm_name = f"BSM_{a}_{b}"
-        cc_delay = half_distance / SPEED_OF_LIGHT  # propagation delay
+        cc_delay = classical_delay_ps(
+            half_distance / SPEED_OF_LIGHT,
+            classical_timing_profile,
+            end_node_processing_delay_ps,
+        )
 
         for router_idx in [a, b]:
             rname = router_names[router_idx]
@@ -166,7 +192,11 @@ def generate_hub_spoke_topology(
 
     for i, j in itertools.permutations(range(num_nodes), 2):
         dist = shortest_paths[i].get(j, num_nodes * inter_node_distance_m)
-        delay = dist / SPEED_OF_LIGHT
+        delay = classical_delay_ps(
+            dist / SPEED_OF_LIGHT,
+            classical_timing_profile,
+            end_node_processing_delay_ps,
+        )
         cchannels.append({
             "source": router_names[i],
             "destination": router_names[j],
@@ -179,6 +209,12 @@ def generate_hub_spoke_topology(
     config = {
         "formalism": formalism,
         "encoding_type": encoding_type,
+        "classical_timing_profile": classical_timing_profile,
+        "end_node_processing_delay_ps": (
+            end_node_processing_delay_ps
+            if classical_timing_profile == CLASSICAL_TIMING_ACP_PAPER
+            else 0
+        ),
         "templates": {
             "default_template": template,
         },
@@ -269,32 +305,44 @@ def generate_linear_topology(
 
     config = generate_hub_spoke_topology(num_nodes=num_nodes, **kwargs)
 
-    # rebuild as simple linear chain
-    # a little hacky but fine
-    rng = np.random.default_rng(kwargs.get("seed", 42))
+    return _replace_router_graph(config, nx.path_graph(num_nodes), kwargs)
 
-    # Clear existing BSM/qchannel/cchannel data and rebuild
+
+def generate_ring_topology(num_nodes: int, **kwargs) -> dict:
+    """Generate a homogeneous ring with two natural routes between routers."""
+    if num_nodes < 3:
+        raise ValueError("A ring topology requires at least three routers")
+    kwargs.setdefault("inter_node_distance_m", 1000.0)
+    kwargs.setdefault("extra_mesh_edges", 0)
+    kwargs.setdefault("qdc_node_index", num_nodes // 2)
+    config = generate_hub_spoke_topology(num_nodes=num_nodes, **kwargs)
+    return _replace_router_graph(config, nx.cycle_graph(num_nodes), kwargs)
+
+
+def _replace_router_graph(config: dict, graph: nx.Graph, kwargs: dict) -> dict:
+    """Rebuild BSM and classical channels for a deterministic router graph."""
+    num_nodes = len(graph)
     router_names = [f"router_{i}" for i in range(num_nodes)]
-    template = config["templates"]["default_template"]
     inter_node_distance_m = kwargs["inter_node_distance_m"]
     half_distance = inter_node_distance_m / 2.0
     attenuation = kwargs.get("attenuation", 0.0002)
-
-    # Router nodes (keep from config)
     router_nodes = [n for n in config["nodes"] if n["type"] == "QuantumRouter"]
 
-    # BSM nodes: one between each adjacent pair
     bsm_nodes = []
     qchannels = []
-    for i in range(num_nodes - 1):
-        bsm_name = f"BSM_{i}_{i+1}"
+    ordered_edges = sorted(
+        (min(left, right), max(left, right))
+        for left, right in graph.edges()
+    )
+    for edge_index, (left, right) in enumerate(ordered_edges):
+        bsm_name = f"BSM_{left}_{right}"
         bsm_nodes.append({
             "name": bsm_name,
             "type": "BSMNode",
-            "seed": i,
+            "seed": edge_index,
             "template": "default_template",
         })
-        for router_idx in [i, i + 1]:
+        for router_idx in (left, right):
             qchannels.append({
                 "source": router_names[router_idx],
                 "destination": bsm_name,
@@ -302,31 +350,43 @@ def generate_linear_topology(
                 "attenuation": attenuation,
             })
 
-    # Classical channels: full mesh + router to BSMs
+    classical_timing_profile = kwargs.get(
+        "classical_timing_profile",
+        CLASSICAL_TIMING_SEQUENCE,
+    )
+    end_node_processing_delay_ps = kwargs.get(
+        "end_node_processing_delay_ps",
+        ACP_PAPER_END_NODE_PROCESSING_DELAY_PS,
+    )
+    bsm_delay = classical_delay_ps(
+        half_distance / SPEED_OF_LIGHT,
+        classical_timing_profile,
+        end_node_processing_delay_ps,
+    )
     cchannels = []
-    cc_delay = half_distance / SPEED_OF_LIGHT
+    for left, right in ordered_edges:
+        bsm_name = f"BSM_{left}_{right}"
+        for router_idx in (left, right):
+            router_name = router_names[router_idx]
+            cchannels.append({"source": router_name, "destination": bsm_name, "delay": bsm_delay})
+            cchannels.append({"source": bsm_name, "destination": router_name, "delay": bsm_delay})
 
-    for i in range(num_nodes - 1):
-        bsm_name = f"BSM_{i}_{i+1}"
-        for router_idx in [i, i + 1]:
-            rname = router_names[router_idx]
-            cchannels.append({"source": rname, "destination": bsm_name, "delay": cc_delay})
-            cchannels.append({"source": bsm_name, "destination": rname, "delay": cc_delay})
-
-    # Full router mesh
-    for i, j in itertools.permutations(range(num_nodes), 2):
-        hop_dist = abs(i - j) * inter_node_distance_m
-        delay = hop_dist / SPEED_OF_LIGHT
+    router_distances = dict(nx.all_pairs_shortest_path_length(graph))
+    for left, right in itertools.permutations(range(num_nodes), 2):
+        delay = classical_delay_ps(
+            router_distances[left][right] * inter_node_distance_m / SPEED_OF_LIGHT,
+            classical_timing_profile,
+            end_node_processing_delay_ps,
+        )
         cchannels.append({
-            "source": router_names[i],
-            "destination": router_names[j],
+            "source": router_names[left],
+            "destination": router_names[right],
             "delay": delay,
         })
 
     config["nodes"] = router_nodes + bsm_nodes
     config["qchannels"] = qchannels
     config["cchannels"] = cchannels
-
     return config
 
 
@@ -380,6 +440,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate QPQ evaluation topology")
     parser.add_argument("--nodes", type=int, default=5)
     parser.add_argument("--linear", action="store_true", help="Linear chain instead of hub-spoke")
+    parser.add_argument("--ring", action="store_true", help="Ring instead of hub-spoke")
     parser.add_argument("--distance", type=float, default=1000.0, help="Inter-node distance (meters)")
     parser.add_argument("--memo-size", type=int, default=10)
     parser.add_argument("--encoding-type", type=str, default="single_heralded")
@@ -390,7 +451,15 @@ if __name__ == "__main__":
     parser.add_argument("--validate", action="store_true")
     args = parser.parse_args()
 
-    gen_func = generate_linear_topology if args.linear else generate_hub_spoke_topology
+    if args.linear and args.ring:
+        parser.error("--linear and --ring are mutually exclusive")
+    gen_func = (
+        generate_linear_topology
+        if args.linear
+        else generate_ring_topology
+        if args.ring
+        else generate_hub_spoke_topology
+    )
     config = gen_func(
         num_nodes=args.nodes,
         inter_node_distance_m=args.distance,

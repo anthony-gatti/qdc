@@ -1,0 +1,421 @@
+"""Minimal paper-faithful Adaptive Continuous Protocol for SeQUeNCe v1.0.0."""
+
+from __future__ import annotations
+
+from bisect import bisect_left
+from collections import Counter
+from enum import Enum, auto
+from itertools import accumulate
+from typing import Optional
+
+from sequence.constants import EPSILON
+from sequence.kernel.event import Event
+from sequence.kernel.process import Process
+from sequence.message import Message
+from sequence.network_management.reservation import Reservation
+from sequence.protocol import Protocol
+
+
+class ACPMsgType(Enum):
+    REQUEST = auto()
+    RESPOND = auto()
+    PATH_FEEDBACK = auto()
+    CACHE_REQUEST = auto()
+    CACHE_RESPONSE = auto()
+
+
+class ACPMessage(Message):
+    def __init__(self, msg_type: ACPMsgType, reservation: Reservation | None = None, **kwargs):
+        super().__init__(msg_type, receiver="adaptive_continuous")
+        self.reservation = reservation
+        self.answer = kwargs.get("answer")
+        self.path = kwargs.get("path")
+        self.timestamp = kwargs.get("timestamp")
+        self.pair = kwargs.get("pair")
+        self.left_target_index = kwargs.get("left_target_index")
+        self.right_target_index = kwargs.get("right_target_index")
+        self.reason = kwargs.get("reason", "")
+
+
+class AdaptiveReservation(Reservation):
+    """Reservation marker for ACP-owned neighbor-link background memory."""
+
+    def __str__(self) -> str:
+        return (
+            f"|ACP; initiator={self.initiator}; responder={self.responder}; "
+            f"path={self.path}; start_time={self.start_time:,}; end_time={self.end_time:,}; "
+            f"memory_size={self.memory_size}; fidelity={self.fidelity}|"
+        )
+
+
+class AdaptiveContinuousProtocol(Protocol):
+    """Distributed ACP state machine attached to one quantum router."""
+
+    def __init__(
+        self,
+        owner,
+        adaptive_max_memory: int,
+        period_ps: int,
+        strategy: str = "freshest",
+        delta: float = 0.05,
+        update_prob: bool = True,
+        background_enabled: bool = True,
+        purify: bool = False,
+        cache_endpoint_processing_delay_ps: int = 0,
+        execution_profile: str = "asynchronous",
+    ):
+        super().__init__(owner, "adaptive_continuous")
+        self.adaptive_max_memory = adaptive_max_memory
+        self.period_ps = period_ps
+        self.strategy = strategy
+        self.delta = delta
+        self.update_prob = update_prob
+        self.background_enabled = background_enabled
+        self.purify = purify
+        self.cache_endpoint_processing_delay_ps = cache_endpoint_processing_delay_ps
+        if execution_profile not in {"asynchronous", "paper_legacy"}:
+            raise ValueError(f"Unsupported ACP execution profile: {execution_profile}")
+        self.execution_profile = execution_profile
+        self.has_empty_neighbor = True
+        self.probability_table: dict[Optional[str], float] = {}
+        self.adaptive_memory_used = 0
+        self.adaptive_memory_names: set[str] = set()
+        self.generated_entanglement_pairs: set[tuple] = set()
+        self.generated_pair_metadata: dict[tuple, dict] = {}
+        self.path_feedback: list[tuple[int, list[str]]] = []
+        self.probability_history: list[dict] = []
+        self.counters = Counter()
+        self.neighbor_selection_counts = Counter()
+        self.background_requests_sent_by_neighbor = Counter()
+        self.background_requests_received_by_neighbor = Counter()
+        self.background_requests_accepted_by_neighbor = Counter()
+        self.background_requests_rejected_by_neighbor = Counter()
+        self.background_responses_accepted_by_neighbor = Counter()
+        self.background_responses_rejected_by_neighbor = Counter()
+        self.lifecycle_events: list[dict] = []
+        # A full adaptive budget must not busy-poll the simulator.  Releases
+        # schedule the next refill attempt explicitly.
+        self._start_event_pending = False
+        self._retry_backoff_ps = max(1, self.period_ps // 1000)
+        self._max_retry_backoff_ps = self.period_ps
+
+    def init(self) -> None:
+        self.init_probability_table()
+        self._snapshot_probability_table(0, "init", [], update_applied=False)
+        if self.execution_profile == "paper_legacy" and self.update_prob:
+            self.owner.timeline.schedule(Event(
+                self.period_ps,
+                Process(self, "update_probability_table_window", []),
+            ))
+        self._schedule_start(0)
+
+    def init_probability_table(self) -> None:
+        neighbors = sorted(
+            dst for dst, next_hop in self.owner.network_manager.get_forwarding_table().items()
+            if dst == next_hop
+        )
+        keys: list[Optional[str]] = list(neighbors)
+        if self.has_empty_neighbor:
+            keys.append(None)
+        if not keys:
+            self.probability_table = {None: 1.0}
+            return
+        self.probability_table = {key: 1 / len(keys) for key in keys}
+        assert abs(sum(self.probability_table.values()) - 1) < EPSILON
+
+    def start(self) -> None:
+        self._start_event_pending = False
+        self.counters["start_invocations"] += 1
+        if not self.background_enabled or self.adaptive_max_memory <= 0:
+            return
+        if self.adaptive_memory_used >= self.adaptive_max_memory:
+            self.counters["start_blocked_memory_cap"] += 1
+            return
+        neighbor = self.select_neighbor()
+        self.neighbor_selection_counts["None" if neighbor is None else neighbor] += 1
+        if neighbor is None:
+            self.counters["start_selected_none"] += 1
+            self._schedule_start(self.period_ps // 100)
+            return
+
+        self.adaptive_memory_used += 1
+        self._record_memory_high_watermark()
+        self.counters["ac_request_sent"] += 1
+        cc_delay = int(self.owner.cchannels[neighbor].delay)
+        start_time = self.owner.timeline.now() + 2 * cc_delay
+        end_time = self._background_reservation_end_time(start_time)
+        reservation = AdaptiveReservation(self.owner.name, neighbor, start_time, end_time, 1, 0.5)
+        if self.owner.network_manager.rsvp.schedule(reservation):
+            self.background_requests_sent_by_neighbor[neighbor] += 1
+            self.owner.send_message(neighbor, ACPMessage(ACPMsgType.REQUEST, reservation))
+        else:
+            self.adaptive_memory_used -= 1
+            self.counters["local_schedule_failed"] += 1
+            self._remove_from_timecards(reservation)
+            self._schedule_retry()
+
+    def select_neighbor(self) -> Optional[str]:
+        keys = []
+        probs = []
+        for key, prob in sorted(self.probability_table.items(), key=lambda item: "" if item[0] is None else item[0]):
+            keys.append(key)
+            probs.append(prob)
+        index = bisect_left(list(accumulate(probs)), self.owner.get_generator().random())
+        return keys[min(index, len(keys) - 1)]
+
+    def received_message(self, src: str, msg: ACPMessage) -> None:
+        if msg.msg_type is ACPMsgType.REQUEST:
+            self._handle_request(src, msg)
+        elif msg.msg_type is ACPMsgType.RESPOND:
+            self._handle_response(src, msg)
+        elif msg.msg_type is ACPMsgType.PATH_FEEDBACK and msg.path:
+            self.record_served_path(msg.path, msg.timestamp or self.owner.timeline.now())
+        elif msg.msg_type is ACPMsgType.CACHE_REQUEST:
+            self.owner.resource_manager.handle_cache_request(src, msg)
+        elif msg.msg_type is ACPMsgType.CACHE_RESPONSE:
+            self.owner.resource_manager.handle_cache_response(src, msg)
+
+    def _handle_request(self, src: str, msg: ACPMessage) -> None:
+        self.counters["ac_request_received"] += 1
+        self.background_requests_received_by_neighbor[src] += 1
+        reservation = msg.reservation
+        if reservation is None or self.adaptive_memory_used >= self.adaptive_max_memory:
+            self.background_requests_rejected_by_neighbor[src] += 1
+            self.counters["remote_rejected_memory_cap"] += 1
+            self.owner.send_message(src, ACPMessage(ACPMsgType.RESPOND, reservation, answer=False))
+            return
+        if self.owner.network_manager.rsvp.schedule(reservation):
+            self.adaptive_memory_used += 1
+            self.background_requests_accepted_by_neighbor[src] += 1
+            self._record_memory_high_watermark()
+            path = [src, self.owner.name]
+            reservation.set_path(path)
+            rules = self.owner.network_manager.rsvp.create_rules_adaptive(path, reservation)
+            self.owner.network_manager.rsvp.load_rules_adaptive(rules, reservation)
+            self.owner.send_message(src, ACPMessage(ACPMsgType.RESPOND, reservation, answer=True, path=path))
+        else:
+            self.background_requests_rejected_by_neighbor[src] += 1
+            self.counters["remote_rejected_schedule"] += 1
+            self.owner.send_message(src, ACPMessage(ACPMsgType.RESPOND, reservation, answer=False))
+
+    def _handle_response(self, src: str, msg: ACPMessage) -> None:
+        self.counters["ac_respond_received"] += 1
+        reservation = msg.reservation
+        if reservation is None:
+            self._schedule_retry()
+            return
+        if not msg.answer:
+            self.background_responses_rejected_by_neighbor[src] += 1
+            self.adaptive_memory_used = max(0, self.adaptive_memory_used - 1)
+            self._remove_from_timecards(reservation)
+            self.counters["remote_schedule_failed"] += 1
+            self._schedule_retry()
+        else:
+            self.background_responses_accepted_by_neighbor[src] += 1
+            reservation.set_path(msg.path)
+            rules = self.owner.network_manager.rsvp.create_rules_adaptive(msg.path, reservation)
+            self.owner.network_manager.rsvp.load_rules_adaptive(rules, reservation)
+            self._retry_backoff_ps = max(1, self.period_ps // 1000)
+            self._schedule_start(3 * max(1, self.period_ps // 1000))
+
+    def _remove_from_timecards(self, reservation: Reservation) -> None:
+        for card in self.owner.network_manager.get_timecards():
+            card.remove(reservation)
+
+    def _schedule_start(self, delay: int, *, randomize: bool = True) -> None:
+        if not self.background_enabled or self.adaptive_max_memory <= 0:
+            return
+        if self._start_event_pending:
+            self.counters["start_events_coalesced"] += 1
+            return
+        delay = max(0, delay)
+        random_delay = int(self.owner.get_generator().uniform(0, delay)) if randomize and delay else delay
+        self.owner.timeline.schedule(Event(self.owner.timeline.now() + random_delay, Process(self, "start", [])))
+        self._start_event_pending = True
+        self.counters["start_events_scheduled"] += 1
+
+    def _schedule_retry(self) -> None:
+        """Retry a rejected background reservation without timeline busy-polling."""
+        delay = self._retry_backoff_ps
+        self._schedule_start(delay, randomize=False)
+        self._retry_backoff_ps = min(self._max_retry_backoff_ps, delay * 2)
+        self.counters["background_reservation_retries"] += 1
+
+    def _background_reservation_end_time(self, start_time: int) -> int:
+        end_time = start_time + self.period_ps
+        if self.execution_profile != "paper_legacy":
+            return end_time
+        # The archived experiment used synchronized expiry epochs despite the
+        # paper describing ACP as asynchronous.
+        aligned_end = (end_time // self.period_ps) * self.period_ps
+        return aligned_end if aligned_end > start_time else aligned_end + self.period_ps
+
+    def add_generated_entanglement_pair(self, pair: tuple, reservation: Reservation | None = None) -> None:
+        if pair in self.generated_entanglement_pairs:
+            return
+        now = self.owner.timeline.now()
+        self.generated_entanglement_pairs.add(pair)
+        metadata = {
+            "generation_time_ps": now,
+            "adaptive_reservation": str(reservation or ""),
+            "link": tuple(sorted((pair[0][0], pair[1][0]))),
+        }
+        self.generated_pair_metadata[pair] = metadata
+        self.generated_pair_metadata[(pair[1], pair[0])] = metadata
+        self.counters["background_endpoint_records"] += 1
+        self.lifecycle_events.append({
+            "event": "background_pair_available",
+            "time_ps": now,
+            "pair": pair,
+            "adaptive_reservation": metadata["adaptive_reservation"],
+            "link": metadata["link"],
+        })
+
+    def remove_entanglement_pair(self, pair: tuple, reason: str = "other") -> None:
+        reverse = (pair[1], pair[0])
+        removed = None
+        if pair in self.generated_entanglement_pairs:
+            removed = pair
+        elif reverse in self.generated_entanglement_pairs:
+            removed = reverse
+        if removed is None:
+            return
+        self.generated_entanglement_pairs.remove(removed)
+        self.generated_pair_metadata.pop(removed, None)
+        self.generated_pair_metadata.pop((removed[1], removed[0]), None)
+        self.counters[f"background_pairs_removed_{reason}"] += 1
+        self.lifecycle_events.append({"event": "background_pair_removed", "time_ps": self.owner.timeline.now(), "pair": removed, "reason": reason})
+
+    def match_generated_entanglement_pair(self, this_node: str, remote_node: str) -> tuple | None:
+        candidates = [
+            pair for pair in self.generated_entanglement_pairs
+            if pair[0][0] == this_node and pair[1][0] == remote_node
+        ]
+        self.counters["cache_checks"] += 1
+        if not candidates:
+            self.counters["cache_misses"] += 1
+            return None
+        self.counters["cache_candidates_found"] += 1
+        if self.strategy == "random":
+            index = int(self.owner.get_generator().integers(0, len(candidates)))
+            return sorted(candidates)[index]
+        return max(candidates, key=self.cache_candidate_key)
+
+    def cache_candidate_key(self, pair: tuple) -> tuple:
+        metadata = self.generated_pair_metadata.get(pair, {})
+        return (
+            self.get_fidelity(pair),
+            metadata.get("generation_time_ps", 0),
+            pair,
+        )
+
+    def find_purification_partner(self, pair: tuple) -> tuple | None:
+        this_fidelity = self.get_fidelity(pair)
+        this_node, remote_node = pair[0][0], pair[1][0]
+        candidates = [
+            candidate for candidate in self.generated_entanglement_pairs
+            if candidate != pair and candidate[0][0] == this_node and candidate[1][0] == remote_node
+        ]
+        if not candidates:
+            return None
+        return min(candidates, key=lambda candidate: (abs(this_fidelity - self.get_fidelity(candidate)), candidate))
+
+    def get_fidelity(self, pair: tuple) -> float:
+        memory = self.owner.timeline.get_entity_by_name(pair[0][1])
+        try:
+            memory.bds_decohere()
+            return memory.get_bds_fidelity()
+        except Exception:
+            return getattr(memory, "fidelity", 0.0)
+
+    def adaptive_memory_used_minus_one(self, memory) -> None:
+        if self.adaptive_memory_used <= 0:
+            self.counters["adaptive_memory_release_underflow"] += 1
+            return
+        self.adaptive_memory_names.discard(memory.name)
+        self.adaptive_memory_used -= 1
+        for pair in list(self.generated_entanglement_pairs):
+            if pair[0][1] == memory.name or pair[1][1] == memory.name:
+                self.remove_entanglement_pair(pair, reason="expired")
+        self.counters["adaptive_memory_released"] += 1
+        # Keep ACP continuous without polling when every adaptive slot is
+        # occupied: each release triggers one coalesced refill attempt.  Do
+        # not reset remote-rejection backoff here; a local release says
+        # nothing about whether the selected remote peer has capacity.
+        if hasattr(self, "_schedule_start"):
+            self._schedule_start(0)
+
+    def _record_memory_high_watermark(self) -> None:
+        self.counters["adaptive_memory_high_watermark"] = max(
+            self.counters["adaptive_memory_high_watermark"],
+            self.adaptive_memory_used,
+        )
+
+    def record_served_path(self, path: list[str], timestamp: int | None = None) -> None:
+        timestamp = self.owner.timeline.now() if timestamp is None else timestamp
+        self.path_feedback.append((timestamp, list(path)))
+        if not self.update_prob:
+            self._snapshot_probability_table(timestamp, "path_feedback", path, update_applied=False)
+            return
+        if self.execution_profile == "paper_legacy":
+            self._snapshot_probability_table(timestamp, "path_feedback_queued", path, update_applied=False)
+            return
+        if self.owner.name not in path:
+            self._snapshot_probability_table(timestamp, "path_feedback", path, update_applied=False)
+            return
+        self._update_probability_table([path], timestamp, "path_feedback")
+
+    def update_probability_table_window(self) -> None:
+        now = self.owner.timeline.now()
+        paths = [
+            path for timestamp, path in self.path_feedback
+            if now - self.period_ps <= timestamp <= now
+        ]
+        self._update_probability_table(paths, now, "paper_window")
+        self.owner.timeline.schedule(Event(
+            now + self.period_ps,
+            Process(self, "update_probability_table_window", []),
+        ))
+
+    def _update_probability_table(self, paths: list[list[str]], timestamp: int, event: str) -> None:
+        this = self.owner.name
+        neighbors = set()
+        for path in paths:
+            if this not in path:
+                continue
+            index = path.index(this)
+            if index > 0:
+                neighbors.add(path[index - 1])
+            if index < len(path) - 1:
+                neighbors.add(path[index + 1])
+        updated = False
+        for neighbor in list(self.probability_table):
+            if neighbor is not None and neighbor in neighbors:
+                self.probability_table[neighbor] += self.delta
+                updated = True
+        if not updated and None in self.probability_table:
+            self.probability_table[None] += self.delta
+            self.counters["probability_idle_none_updates"] += 1
+        total = sum(self.probability_table.values())
+        for neighbor in list(self.probability_table):
+            self.probability_table[neighbor] /= total
+        self.counters["probability_updates"] += 1
+        if updated:
+            self.counters["probability_path_updates"] += 1
+        snapshot_path = paths[-1] if len(paths) == 1 else []
+        self._snapshot_probability_table(timestamp, event, snapshot_path, update_applied=updated)
+
+    def send_path_feedback(self, node: str, path: list[str], timestamp: int) -> None:
+        self.owner.send_message(node, ACPMessage(ACPMsgType.PATH_FEEDBACK, path=path, timestamp=timestamp))
+
+    def _snapshot_probability_table(self, timestamp: int, event: str, path: list[str], update_applied: bool) -> None:
+        self.probability_history.append({
+            "time_ps": timestamp,
+            "event": event,
+            "path": list(path),
+            "update_applied": update_applied,
+            "table": {
+                ("None" if key is None else key): value
+                for key, value in self.probability_table.items()
+            },
+        })

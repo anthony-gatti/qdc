@@ -7,18 +7,17 @@ hardware:
   memory_efficiency: 0.5          # photon emission success probability
   memory_coherence_time_s: 5.0    # memory T2 time (seconds)
   memories_per_node: 50           # total quantum memories per router
-  acp_memory: 6                   # memories reserved for ACP (0 = ODO only)
   gate_fidelity: 0.99
   measurement_fidelity: 0.99
-  purify: true                    # enable entanglement purification
 
 workload:
+  name: "qpq"
   mode: "qpq"
   database_size_log: 10
   num_clients: 10
   queries_per_client: 3
   round_deadline_s: 5.0
-  reservation_duration_s: 5.0     # was 15 — tighten so resources free sooner
+  transaction_duration_s: 5.0     # deadline for both sequential rounds
   request_period_s: 6.0           # was 1 — space out so queries don't overlap
   start_offset_s: 2.0
   fidelity_threshold: 0.7
@@ -34,7 +33,8 @@ topology:
 experiment:
   backends:
     - "odo"
-    - "acp"
   num_trials: 1
-  simulation_end_time_s: 180.0
+  # The final default QPQ transaction deadline is 19 s.  A short tail lets
+  # finalization run without simulating unused ACP background traffic.
+  simulation_end_time_s: 20.0
   output_dir: "output"

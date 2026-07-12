@@ -1,135 +1,197 @@
-# QPQ Evaluation Framework
+# QDC Quantum-Routing Evaluation Framework
 
-A simulation framework for evaluating entanglement routing algorithms under Quantum Private Query (QPQ) workloads on Quantum Data Center (QDC) architectures. Built on [SeQUeNCe](https://github.com/sequence-toolbox/SeQUeNCe).
+QDC is an application-aware quantum-routing evaluation framework built on
+SeQUeNCe v1.0.0. It evaluates routing algorithms under realistic workloads,
+classical communication delays, memory limits, loss, decoherence, and swapping
+rather than treating every entanglement request as an isolated pair.
 
-## Project goal
+The current application workload is Quantum Private Query (QPQ) for a Quantum
+Data Center (QDC). The architecture is intended to accommodate additional
+algorithms and application state machines without changing the common runtime
+or result schema.
 
-Implement the QPQ protocol on a QDC and simulate realistic client workloads to evaluate how different entanglement routing algorithms perform — primarily, the range through which they can provide quality service for a sufficient fraction of their requests. The framework is meant to support a broad set of algorithms (on-demand, ACP, Q-CAST, Q-GUARD, EFiRAP, etc.) so they can be compared head-to-head under the same workload assumptions.
+## QPQ Model
 
-Long term, the framework should generalize beyond QPQ to other QDC applications (multi-party private quantum communication, distributed sensing, blind quantum computation), evaluating algorithms under heterogeneous workloads where multiple application types share the network simultaneously.
+A QPQ query is a two-round transaction between a client router and the QDC.
+Each round requires `2 * log2(N) + 1` Bell pairs for a database of size `N`, so
+each query requires `4 * log2(N) + 2` pairs total. A query succeeds only when
+both rounds deliver their exact pair quotas before their deadlines and above
+the configured fidelity threshold.
 
-## How QPQ works
+The framework measures the entanglement-service layer: query success, time to
+serve (TTS), pair-arrival time, fidelity, failures, memory occupancy, and
+algorithm-specific diagnostics. qRAM execution and QPQ cheat-detection
+operations occur after pair delivery and are outside the simulator scope.
 
-Quantum Private Queries let a client (Alice) retrieve item *j* from a server's (Bob's) database of size *N* without revealing *j*, while also detecting if Bob tries to peek at her query. The protocol exchanges entangled query registers between Alice and the QDC.
+## Supported Algorithms
 
-In this framework, each QPQ query is modeled as a **2-round entanglement distribution** between a client router and the QDC hub:
+All supported algorithms use the same SeQUeNCe physical topology and common
+`BackendResult` / `RequestResult` schema.
 
-- **Round 1**: Alice sends a `log N`-qubit query register to Bob (consuming `log N` Bell pairs via teleportation), Bob runs his qRAM and returns a `log N + 1`-qubit response register (consuming another `log N + 1` pairs). Total round 1: `2(log N) + 1 = 2n+1` Bell pairs.
-- **Round 2**: Same exchange repeats with Alice's second query register (the superposition state used for cheat detection).
+| Algorithm | Configuration name | Current role |
+| --- | --- | --- |
+| Shortest Path On-Demand | `odo` | Native current-SeQUeNCe on-demand baseline with no pregeneration. |
+| Adaptive Continuous Protocol | `acp_freshest`, `acp_random` | Continuous neighboring-pair generation, cache reuse, adaptive path feedback, and an optional purification profile. |
+| Uniform Continuous Protocol | `ucp` | ACP without adaptive probability updates; retained for paper comparisons. |
+| Q-CAST, centralized control | `qcast` | Historical centrally released P3/P4 control profile for reproducibility. |
+| Q-CAST, paper-local control | `qcast_distributed` | Recommended Q-CAST profile. It uses explicit `k`-hop link-state messages and path-local P4 release with XOR recovery. |
 
-Total per query: `2(2n+1) = 4n+2` Bell pairs delivered between client and QDC. A query succeeds if all pairs are delivered before the round deadlines and meet the fidelity threshold.
+Q-CAST currently implements the no-purification algorithm. Its P2 plan is
+deterministic from globally consistent topology and demand inputs, while its
+dynamic P3/P4 link-state and swapping decisions observe the paper's locality
+constraint. See [algorithms/qcast/README.md](algorithms/qcast/README.md) for
+the exact SeQUeNCe boundary and known modeling limits.
 
-The framework measures **network-level cost only**: time-to-serve, fidelity, success rate. Downstream protocol details (Bob's qRAM execution, Alice's cheat-detection measurement) are out of scope — they're treated as instantaneous after pair delivery.
+## Workloads And Topologies
 
-## What's been done so far
+Three workload plugins are available:
 
-Framework and infrastructure:
+- `qpq`: two-round QPQ transactions with exact pair accounting.
+- `single_pair`: the ACP paper-style single-pair validation workload.
+- `concurrent_pairs`: controlled batches of independent pair requests, useful
+  for algorithm and topology diagnostics.
 
-- **Topology generator**: central-hop and linear topologies with parametric depth, link distance, and density.
-- **QPQ application**: SeQUeNCe `Application` subclass implementing the 2-round protocol structure with per-round deadlines and pair-arrival timestamping.
-- **Workload generator**: produces QPQ query specs with configurable client count, queries per client, inter-query timing, and database size.
-- **Backend abstraction**: each routing algorithm implements `BackendBase` and plugs into the same experiment runner.
-- **Sweep infrastructure**: 2D parameter sweeps over `(distance × seed)` and `(database_size × seed)` with consistent seed counts, producing a unified per-query CSV.
-- **Plotting**: six characterization charts (success-rate heatmap, TTS by distance, fidelity by hops, db-size scaling, failure decomposition, pair-arrival timeline).
+Topology configuration supports `hub_spoke`, `linear`, and `ring` router
+graphs. Every router pair has modeled classical channels. The shared hardware
+parameter `hardware.link_parallelism` creates the same number of physical
+link/BSM lanes for ODO, ACP, and Q-CAST; Q-CAST `edge_width` is a scheduling
+limit, not extra hardware.
 
-Algorithms implemented:
+## Current Evidence
 
-- **ODO** (on-demand shortest path) — baseline
-- **ACP** (continuous pre-generation) — via the ACP fork of SeQUeNCe
+The current 30-seed regime study identifies real, configuration-dependent
+advantages rather than a universal winner:
 
-A first round of evaluation has been run for ODO and ACP across 4 link distances (10/20/30/40 km), 7 hop counts (1–7), 4 database sizes (n = 5, 10, 15, 20), with 15 seeds per configuration. See `sweep2d_final/figures/` for results.
+- ACP is fastest for repeated QPQ traffic with a warm adaptive cache.
+- ODO is fastest for direct low-coherence traffic where fresh generation is
+  cheaper than cache coordination.
+- Paper-local Q-CAST is fastest for a single-pair request over two symmetric
+  ring routes when ACP has a small cache budget.
+- Q-CAST is not currently competitive for a high fan-out, multi-pair burst
+  from one QDC under its exclusive slot-allocation model.
 
-## Repository layout
+Exact configurations, commands, results, and limitations are documented in
+[experiments/algorithm_regimes.md](experiments/algorithm_regimes.md).
 
+## Repository Layout
+
+```text
+qdc/
+|- algorithms/              Routing algorithm plugins and registry
+|  |- acp/                  ACP and UCP configuration
+|  |- odo/                  Shortest-path on-demand baseline
+|  `- qcast/                SeQUeNCe-independent Q-CAST planner
+|- workloads/               QPQ, single-pair, and concurrent-pair state machines
+|- backends/sequence/       SeQUeNCe runtime, adapters, protocols, and schedulers
+|- experiments/             Generic, paper, Q-CAST, and regime-study runners
+|- config/                  YAML workload and algorithm configurations
+|- tests/                   Unit and SeQUeNCe integration coverage
+|- topology.py              Hub-spoke, linear, and ring topology generators
+|- results.py               Common result schema and CSV writer
+`- sweep2d.py               ODO/ACP characterization sweep runner
 ```
-qdc_eval/
-├── backends/                # Backend interface + algorithm implementations
-├── config/                  # YAML experiment configurations
-├── sweep2d_final/           # Output of main 2D sweep (CSVs + figures)
-├── common.py                # Time-unit constants, QPQ pair-count formulas
-├── qpq_app.py               # SeQUeNCe Application implementing 2-round QPQ
-├── results.py               # Result dataclasses + CSV I/O
-├── sweep2d.py               # Experiment orchestration: 2D sweep + db-size sweep
-├── plot_all.py              # Generate all 6 charts from sweep CSVs
-├── topology.py              # Hub-spoke and linear topology generation
-└── workload.py              # QPQ query spec generation
-```
+
+Historical ACP diagnostics and pre-plugin material are retained as reference
+only. Supported commands do not import the archived ACP implementation.
 
 ## Setup
 
-This framework depends on two upstream repositories that are not included here. Expected directory layout:
+The supported Python environment is `/home/amg671/.conda/envs/qdc/bin/python`.
+The sibling `SeQUeNCe` checkout is kept pristine at v1.0.0 commit `ffd7c837`.
 
+```text
+qdc_project/
+|- qdc/
+`- SeQUeNCe/
 ```
-qdc/
-├── qdc_eval/                # this repo
-├── SeQUeNCe/                # https://github.com/sequence-toolbox/SeQUeNCe
-└── acp/                     # ACP fork of SeQUeNCe
-```
-
-`backends/acp_backend.py` adds `../acp/` to `sys.path` at import.
 
 ```bash
-python -m venv qdc_env
-source qdc_env/bin/activate
-
-cd ../SeQUeNCe && pip install -e .
-pip install numpy networkx matplotlib pyyaml
+QDC_PYTHON=/home/amg671/.conda/envs/qdc/bin/python
+"$QDC_PYTHON" --version
+"$QDC_PYTHON" -m pip install -e /home/amg671/qdc_project/SeQUeNCe
+"$QDC_PYTHON" -c 'import sequence; print(sequence.__file__)'
 ```
 
-Python 3.11 used during development.
+The import should resolve under `/home/amg671/qdc_project/SeQUeNCe`.
 
-## Running experiments
+ACP execution profiles are explicit:
 
-Quick run (~30 min):
+- `asynchronous` is the default. It updates probabilities after each served
+  path and gives each background reservation its own lifetime.
+- `paper_legacy` reproduces the archived 100 ms windowed update schedule,
+  idle-node reward of the phantom `None` choice, and period-aligned expiry.
+  Use it only when reproducing archived paper experiments.
+
+## Running Experiments
+
+Run the matched QPQ ODO/ACP pilot:
 
 ```bash
-python sweep2d.py --config config/default.yaml --output pilot_output --pilot
-python plot.py --sweep-dir pilot_output
+/home/amg671/.conda/envs/qdc/bin/python experiments/run.py \
+  --config config/qpq.yaml \
+  --output /tmp/qdc_qpq
 ```
 
-Full sweep (~17 hours, run in tmux):
+Run ODO, ACP, and paper-local Q-CAST under equal shared hardware:
 
 ```bash
-python sweep2d.py --config config/default.yaml --output sweep2d_final
-python plot.py --sweep-dir sweep2d_final --output-dir sweep2d_final/figures
+/home/amg671/.conda/envs/qdc/bin/python experiments/run.py \
+  --config config/qpq_qcast_matched.yaml \
+  --output /tmp/qdc_qcast_matched \
+  --algorithms odo acp_freshest qcast_distributed
 ```
 
-Default sweep is 4 distances × 15 seeds × 2 backends + a database-size sub-sweep at 20 km.
+Run the reusable topology/algorithm regime pilots:
 
-CLI flags:
-- `--num-nodes N` — topology size (default 25, gives hop depth 1–7)
-- `--seeds K` — seeds per cell (default 15)
-- `--skip-primary` / `--skip-dbsize` — run only one sweep
+```bash
+/home/amg671/.conda/envs/qdc/bin/python experiments/run_algorithm_regimes.py \
+  --case ring_single_opposite \
+  --output /tmp/qdc_ring_regime \
+  --seeds 0 1 2 3 4 5 6 7 8 9
+```
 
-## Next steps
+Run ACP paper-style validation:
 
-**Algorithm implementations**:
+```bash
+/home/amg671/.conda/envs/qdc/bin/python experiments/run_single_pair_paper.py \
+  --output /tmp/qdc_single_pair \
+  --algorithms odo acp_freshest acp_random acp_purify
 
-- **Q-CAST**: proactive multi-path entanglement distribution.
-- **Q-GUARD**: fidelity-aware extension of Q-CAST with purification planning.
-- **EFiRAP**: entanglement fidelity-aware routing with purification.
-- **LP-based optimal baseline** for small topologies (gives an upper bound on what any heuristic could achieve).
+/home/amg671/.conda/envs/qdc/bin/python experiments/run_paper_scenario.py \
+  --scenario bottleneck20 \
+  --output /tmp/qdc_bottleneck20 \
+  --seeds 20 \
+  --algorithms odo ucp_purify acp_purify \
+  --acp-execution-profile paper_legacy
+```
 
-Each new algorithm should plug in via `BackendBase` and produce results in the same CSV format, so existing sweep and plotting infrastructure works unchanged.
+Run the full test suite:
 
-**Evaluation extensions**:
+```bash
+/home/amg671/.conda/envs/qdc/bin/python -m pytest -q
+```
 
-- **Realistic topologies**: rerun characterization on Topology Zoo backbones (SURFnet, GÉANT, Colt, etc.) instead of synthetic. Different generated topologies also likely produce different protocol orderings.
-- **Push the fidelity boundary**: current sweep keeps fidelity well above the 0.7 threshold at all tested operating points, so fidelity-aware algorithms have nothing to differentiate on. Need longer distances (60+ km), lower initial fidelity, or deeper hops to find where fidelity becomes binding.
-- **Concurrent client load**: current workload has well-spaced queries (6s period, single round at a time per client). Need to characterize what happens under heavy concurrent load where hub memory contention becomes the bottleneck.
-- **Hardware parameter sensitivity**: sweep link generation rate, swap success probability, memory coherence time independently to understand which physical parameters most strongly determine the frontier.
+`sweep2d.py` remains the ODO/ACP characterization runner. Use
+`experiments/run.py` for configuration-driven comparisons that include
+Q-CAST.
 
-**Modeling improvements**:
+## Next Steps
 
-- **Register-coherence modeling**: the simulation tracks Bell pair fidelity but doesn't model decoherence of Alice's and Bob's local query registers while they wait for sequential pairs. Could matter at long distances or large database sizes.
-- **Security metric integration**: connect per-pair fidelity to the QPQ information bound `I_B ≤ c·ε^(1/4)·log₂N` so the framework can directly report cheat-detection probability as a function of network conditions.
+- Add the next routing algorithm, beginning with Q-GUARD or another
+  fidelity-aware policy, through the common algorithm registry and result
+  schema.
+- Extend QPQ evaluation to controlled ring and larger path-diverse topologies,
+  then evaluate concurrent client traffic rather than only well-spaced queries.
+- Add realistic topology imports and hardware sensitivity studies.
+- Make fidelity binding through longer links, lower initial fidelity, or deeper
+  paths before comparing purification-aware algorithms.
+- Add workload state machines for additional QDC applications and eventually
+  heterogeneous application mixes.
 
-## Future directions
+## Modeling Notes
 
-Beyond QPQ, the same QDC architecture supports other applications described in the QDC paper (Liu, Hann, Jiang 2023):
-
-- **Multi-party private quantum communication** combines QPQ with quantum secret sharing across multiple non-cooperating QDCs.
-- **Distributed sensing with data compression** uses QRAM to compress quantum data before transmission, reducing entanglement cost for sensor networks.
-- **Blind quantum computation** outsources computations to QDCs without revealing what is computed.
-
-Each application has its own workload characteristics (different pair counts per request, different fidelity tolerances, different concurrency patterns). The most interesting evaluation question is how routing algorithms hold up under **heterogeneous workloads** where multiple application types share the same QDC simultaneously. This requires generalizing the workload generator and adding application-specific backends, but the rest of the framework should carry over.
+The framework intentionally models physical generation, attenuation, detector
+efficiency, memory decoherence, classical propagation, endpoint processing,
+and SeQUeNCe swapping. It does not yet model decoherence of the application
+query registers while a QPQ transaction waits for its pairs, or the downstream
+QPQ security calculation from delivered-pair fidelity.

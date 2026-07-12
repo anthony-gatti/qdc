@@ -106,7 +106,11 @@ class QPQApp(RequestApp):
         # Pair tracking (both sides)
         self.entanglement_timestamps = defaultdict(list)
         self.entanglement_fidelities = defaultdict(list)
+        self.entanglement_provenance = defaultdict(list)
+        self.low_fidelity_rejects = defaultdict(int)
         self.diagnostic_counters = defaultdict(int)
+        self.diagnostic_events = []
+        self._delivered_memory_events = set()
 
     def submit_query(
         self,
@@ -189,9 +193,42 @@ class QPQApp(RequestApp):
             return
 
         if info.index not in self.memo_to_reservation:
+            endpoints = getattr(info.memory, "qdc_application_reservation_endpoints", ())
+            remote_is_endpoint = not endpoints or info.remote_node in endpoints
+            if (
+                getattr(info.memory, "qdc_application_reservation", "")
+                and (not endpoints or self.node.name in endpoints)
+                and remote_is_endpoint
+            ):
+                self.diagnostic_counters["unmapped_entangled_callbacks"] += 1
+                self.diagnostic_events.append({
+                    "event": "unmapped_entangled_callback",
+                    "time_ps": self.node.timeline.now(),
+                    "node": self.node.name,
+                    "memory_index": info.index,
+                    "memory": info.memory.name,
+                    "remote_node": info.remote_node,
+                    "remote_memo": info.remote_memo,
+                    "reservation": getattr(info.memory, "qdc_application_reservation", ""),
+                    "reservation_endpoints": endpoints,
+                    "generation_source": getattr(info.memory, "qdc_generation_source", ""),
+                    "elementary_sources": getattr(info.memory, "qdc_elementary_sources", []),
+                })
             return
 
         reservation = self.memo_to_reservation[info.index]
+        if self.node.timeline.now() < reservation.start_time:
+            self.diagnostic_counters["pre_start_delivery_callbacks"] += 1
+        delivery_key = (
+            id(reservation),
+            info.index,
+            info.remote_node,
+            info.remote_memo,
+            self.node.timeline.now(),
+        )
+        if delivery_key in self._delivered_memory_events:
+            self.diagnostic_counters["duplicate_delivery_callbacks"] += 1
+        self._delivered_memory_events.add(delivery_key)
 
         # Map reservation to query if we haven't yet
         self._try_map_reservation(reservation)
@@ -225,6 +262,7 @@ class QPQApp(RequestApp):
         self.diagnostic_counters["initiator_pair_callbacks"] += 1
         if info.fidelity < reservation.fidelity:
             self.diagnostic_counters["initiator_low_fidelity_rejects"] += 1
+            self.low_fidelity_rejects[reservation] += 1
             log.logger.info(
                 f"{self.node.name}: pair fidelity {info.fidelity:.4f} "
                 f"below threshold {reservation.fidelity}"
@@ -234,6 +272,18 @@ class QPQApp(RequestApp):
         # Track delivery
         self.entanglement_timestamps[reservation].append(self.node.timeline.now())
         self.entanglement_fidelities[reservation].append(info.fidelity)
+        elementary_sources = list(getattr(info.memory, "qdc_elementary_sources", []))
+        if not elementary_sources and not self._has_acp():
+            path = getattr(reservation, "path", [])
+            elementary_sources = [
+                {"source": "application", "link": tuple(sorted(edge))}
+                for edge in zip(path, path[1:])
+            ]
+        self.entanglement_provenance[reservation].append({
+            "source": getattr(info.memory, "qdc_generation_source", "unknown"),
+            "background_contribution": getattr(info.memory, "qdc_background_contribution", ""),
+            "elementary_sources": elementary_sources,
+        })
 
         # Free memory for next pair
         self.node.resource_manager.update(None, info.memory, MemoryInfo.RAW)
@@ -265,7 +315,7 @@ class QPQApp(RequestApp):
         """Called when all pairs for a round have been delivered."""
         # Expire rules for this round's reservation
         self.node.resource_manager.expire_rules_by_reservation(reservation)
-        self._send_expire_rules_message(reservation)
+        self._expire_remote_round_rules(reservation)
 
         # Find query and round
         if reservation not in self._reservation_to_query:
@@ -376,20 +426,18 @@ class QPQApp(RequestApp):
                     node, time, reservation
                 )
 
-    def _send_expire_rules_message(self, reservation) -> None:
-        """Send expire-rule messages to intermediate nodes, if ACP is present."""
-        if not self._has_acp():
-            return
+    def _expire_remote_round_rules(self, reservation) -> None:
+        """Expire this completed round's rules on every remote path node.
+
+        Round 2 uses a distinct reservation, so early expiry of round 1 cannot
+        remove round-2 rules or terminate the enclosing QPQ query.
+        """
         if not hasattr(reservation, "path") or not reservation.path:
             return
 
-        path = reservation.path
-        if len(path) > 2:
-            for i in range(1, len(path) - 1):
-                node = path[i]
-                self.node.adaptive_continuous.send_expire_rules_message(
-                    node, reservation
-                )
+        for node in reservation.path:
+            if node != self.node.name:
+                self.node.resource_manager.expire_remote_rules(node, reservation)
 
     # ---------- Results collection ----------
 
