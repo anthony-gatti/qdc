@@ -10,7 +10,11 @@ import numpy as np
 
 from common import MILLISECOND, SECOND
 from results import RequestResult
-from topology import generate_hub_spoke_topology, generate_linear_topology
+from topology import (
+    generate_hub_spoke_topology,
+    generate_linear_topology,
+    generate_ring_topology,
+)
 from workloads.base import EntanglementDemand, PairDelivery, Workload
 
 
@@ -158,7 +162,7 @@ class ConcurrentPairWorkload(Workload):
     def __post_init__(self) -> None:
         if self.num_nodes < 2 or not 0 <= self.qdc_node_index < self.num_nodes:
             raise ValueError("Concurrent-pair workload requires a valid QDC node")
-        if self.topology_type not in {"linear", "hub_spoke"}:
+        if self.topology_type not in {"linear", "hub_spoke", "ring"}:
             raise ValueError(f"Unsupported concurrent-pair topology {self.topology_type!r}")
         if self.num_requests <= 0 or self.pair_count <= 0:
             raise ValueError("Concurrent-pair request and pair counts must be positive")
@@ -228,11 +232,11 @@ class ConcurrentPairWorkload(Workload):
             for template in config.get("templates", {}).values():
                 template["adaptive_max_memory"] = adaptive_memory
             return config
-        generator = (
-            generate_linear_topology
-            if self.topology_type == "linear"
-            else generate_hub_spoke_topology
-        )
+        generator = {
+            "linear": generate_linear_topology,
+            "hub_spoke": generate_hub_spoke_topology,
+            "ring": generate_ring_topology,
+        }[self.topology_type]
         return generator(
             num_nodes=self.num_nodes,
             inter_node_distance_m=self.inter_node_distance_m,

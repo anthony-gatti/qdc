@@ -10,7 +10,11 @@ import numpy as np
 
 from common import MILLISECOND, SECOND, pairs_per_round
 from results import RequestResult
-from topology import generate_hub_spoke_topology
+from topology import (
+    generate_hub_spoke_topology,
+    generate_linear_topology,
+    generate_ring_topology,
+)
 from workloads.base import (
     DemandCallbacks,
     DemandSubmitter,
@@ -257,6 +261,7 @@ class QPQWorkload(Workload):
     num_nodes: int = 25
     inter_node_distance_m: float = 20_000.0
     qdc_node_index: int = 12
+    topology_type: str = "hub_spoke"
     extra_mesh_edges: int = 3
     memories_per_node: int = 50
     memory_fidelity: float = 0.99
@@ -281,6 +286,8 @@ class QPQWorkload(Workload):
             raise ValueError("QPQ requires at least two quantum routers")
         if not 0 <= self.qdc_node_index < self.num_nodes:
             raise ValueError("QPQ qdc_node_index must identify a quantum router")
+        if self.topology_type not in {"linear", "hub_spoke", "ring"}:
+            raise ValueError(f"Unsupported QPQ topology {self.topology_type!r}")
         if self.link_parallelism <= 0:
             raise ValueError("QPQ link_parallelism must be positive")
 
@@ -320,7 +327,12 @@ class QPQWorkload(Workload):
             for template in config.get("templates", {}).values():
                 template["adaptive_max_memory"] = adaptive_memory
             return config
-        return generate_hub_spoke_topology(
+        generator = {
+            "linear": generate_linear_topology,
+            "hub_spoke": generate_hub_spoke_topology,
+            "ring": generate_ring_topology,
+        }[self.topology_type]
+        return generator(
             num_nodes=self.num_nodes,
             inter_node_distance_m=self.inter_node_distance_m,
             memo_size=self.memories_per_node,
@@ -384,6 +396,7 @@ class QPQWorkload(Workload):
             num_nodes=num_nodes,
             inter_node_distance_m=float(topology.get("inter_node_distance_m", 20_000.0)),
             qdc_node_index=int(topology.get("qdc_node_index", num_nodes // 2)),
+            topology_type=str(topology.get("type", "hub_spoke")),
             extra_mesh_edges=int(topology.get("extra_mesh_edges", 3)),
             memories_per_node=int(hardware.get("memories_per_node", 50)),
             memory_fidelity=float(hardware.get("link_fidelity", 0.99)),
