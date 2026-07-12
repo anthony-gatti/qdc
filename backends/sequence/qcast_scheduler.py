@@ -109,8 +109,13 @@ class _Slot:
     rules: list[tuple[object, Rule]] = field(default_factory=list)
     edge_success: dict[str, bool] = field(default_factory=dict)
     edge_fidelity: dict[str, float] = field(default_factory=dict)
+    elementary_success_ps: dict[str, int] = field(default_factory=dict)
+    elementary_success_fidelity: dict[str, float] = field(default_factory=dict)
     plan_receipts: set[str] = field(default_factory=set)
+    plan_receipt_ps: dict[str, int] = field(default_factory=dict)
     link_state_receipts: dict[str, set[str]] = field(default_factory=dict)
+    local_p3_ready_ps: dict[str, int] = field(default_factory=dict)
+    global_p4_start_ps: int | None = None
     aborted_deliveries: set[str] = field(default_factory=set)
     cleanup_time_ps: int = 0
 
@@ -137,6 +142,8 @@ class QCASTDemandScheduler:
         self.events: list[dict] = []
         self.max_allocated_by_node = Counter()
         self.scheduled_lanes_by_channel = Counter()
+        self.slot_timing_records: list[dict] = []
+        self.delivery_timing_records: list[dict] = []
         self._edge_middle_nodes = self._middle_nodes_by_edge()
         self._graph = self._router_graph()
         self._edge_model_details = {}
@@ -301,6 +308,7 @@ class QCASTDemandScheduler:
             return
         if msg.msg_type is QCASTMessageType.PLAN:
             slot.plan_receipts.add(receiver)
+            slot.plan_receipt_ps[receiver] = self.timeline.now()
             self.counters["plan_messages_received"] += 1
             self.timeline.schedule(Event(
                 slot.generation_start_ps,
@@ -309,6 +317,15 @@ class QCASTDemandScheduler:
         elif msg.msg_type is QCASTMessageType.LINK_STATE:
             slot.link_state_receipts.setdefault(receiver, set()).add(src)
             self.counters["link_state_messages_received"] += 1
+            expected = set(self._nodes_within_hops(
+                receiver,
+                self.algorithm.link_state_hops,
+            )) - {receiver}
+            if (
+                receiver not in slot.local_p3_ready_ps
+                and expected.issubset(slot.link_state_receipts[receiver])
+            ):
+                slot.local_p3_ready_ps[receiver] = self.timeline.now()
 
     def activate_node(self, slot_id: int, node_name: str) -> None:
         slot = self.slot
@@ -343,6 +360,9 @@ class QCASTDemandScheduler:
                 }
             rule = Rule(10, action, eg_rule_condition, action_args, condition_args)
             rule.set_reservation(assignment.reservation)
+            memory = self._memory(node_name, memory_index)
+            memory.qcast_slot_id = slot_id
+            memory.qcast_lane_id = assignment.lane_id
             node.resource_manager.load(rule)
             slot.rules.append((node, rule))
         record_memory_occupancy(node)
@@ -369,6 +389,9 @@ class QCASTDemandScheduler:
                     self.counters["elementary_lanes_succeeded" if success else "elementary_lanes_failed"] += 1
 
         maximum_state_delay = self.algorithm.control_processing_delay_ps
+        for router_name in self.routers:
+            if not self._nodes_within_hops(router_name, self.algorithm.link_state_hops):
+                slot.local_p3_ready_ps.setdefault(router_name, self.timeline.now())
         for sender in sorted(self.routers):
             payload = {
                 lane_id: success
@@ -391,6 +414,7 @@ class QCASTDemandScheduler:
                 self.counters["link_state_messages_sent"] += 1
 
         p4_start = self.timeline.now() + maximum_state_delay + 1
+        slot.global_p4_start_ps = p4_start
         self.timeline.schedule(Event(p4_start, Process(self, "start_swapping", [slot_id])))
         self.events.append({
             "event": "generation_window_closed",
@@ -575,6 +599,14 @@ class QCASTDemandScheduler:
         )
         context.deliveries.append(delivery)
         context.callbacks.on_pair_delivered(context.demand, delivery)
+        self._record_delivery_timing(
+            slot,
+            delivery_id,
+            context.demand.demand_id,
+            nodes,
+            assignments,
+            qcast_role,
+        )
         self.counters["end_to_end_pairs_delivered"] += 1
         if used_recovery:
             self.counters["end_to_end_pairs_delivered_recovery"] += 1
@@ -609,6 +641,7 @@ class QCASTDemandScheduler:
         if slot is None or slot.slot_id != slot_id:
             return
         self._reset_slot_memories(slot)
+        self._record_slot_timing(slot)
         self.counters["slots_completed"] += 1
         self.events.append({
             "event": "slot_completed",
@@ -670,6 +703,7 @@ class QCASTDemandScheduler:
                 for edge in self._edge_models
             ],
             "edge_width_model": "path_scheduling_cap_over_shared_link_parallelism",
+            "timing": self._timing_diagnostics(),
             "scheduled_lane_usage_by_link": {
                 "|".join(edge): {
                     middle: self.scheduled_lanes_by_channel[(edge, middle)]
@@ -713,6 +747,185 @@ class QCASTDemandScheduler:
                 info = node.resource_manager.memory_manager.get_info_by_memory(memory)
                 if info.state != MemoryInfo.RAW:
                     node.resource_manager.update(None, memory, MemoryInfo.RAW)
+                for attribute in ("qcast_slot_id", "qcast_lane_id"):
+                    if hasattr(memory, attribute):
+                        delattr(memory, attribute)
+
+    def record_elementary_success(
+        self,
+        slot_id: int,
+        lane_id: str,
+        time_ps: int,
+        fidelity: float,
+    ) -> None:
+        slot = self.slot
+        if slot is None or slot.slot_id != slot_id:
+            self.counters["stale_elementary_success_observations"] += 1
+            return
+        slot.elementary_success_ps.setdefault(lane_id, time_ps)
+        slot.elementary_success_fidelity.setdefault(lane_id, fidelity)
+
+    def _record_delivery_timing(
+        self,
+        slot: _Slot,
+        delivery_id: str,
+        demand_id: str,
+        nodes: tuple[str, ...],
+        assignments: tuple[QCASTLaneEdge, ...],
+        role: str,
+    ) -> None:
+        success_times = [
+            slot.elementary_success_ps[assignment.lane_id]
+            for assignment in assignments
+            if assignment.lane_id in slot.elementary_success_ps
+        ]
+        relevant_ready = [
+            slot.local_p3_ready_ps[node]
+            for node in nodes
+            if node in slot.local_p3_ready_ps
+        ]
+        earliest_success = min(success_times) if success_times else None
+        latest_success = max(success_times) if success_times else None
+        path_ready = max(relevant_ready) if relevant_ready else None
+        p4_start = slot.global_p4_start_ps
+        self.delivery_timing_records.append({
+            "slot_id": slot.slot_id,
+            "delivery_id": delivery_id,
+            "demand_id": demand_id,
+            "role": role,
+            "path": list(nodes),
+            "earliest_elementary_success_ps": earliest_success,
+            "latest_elementary_success_ps": latest_success,
+            "path_local_p3_ready_ps": path_ready,
+            "global_p4_start_ps": p4_start,
+            "delivery_ps": self.timeline.now(),
+            "oldest_pair_age_at_global_p4_ps": (
+                p4_start - earliest_success
+                if p4_start is not None and earliest_success is not None else None
+            ),
+            "oldest_pair_age_at_generation_window_close_ps": (
+                slot.generation_end_ps - earliest_success
+                if earliest_success is not None else None
+            ),
+            "post_generation_control_wait_ps": (
+                p4_start - slot.generation_end_ps
+                if p4_start is not None else None
+            ),
+            "delivery_after_global_p4_ps": (
+                self.timeline.now() - p4_start
+                if p4_start is not None else None
+            ),
+            "oldest_pair_age_at_delivery_ps": (
+                self.timeline.now() - earliest_success
+                if earliest_success is not None else None
+            ),
+            "global_barrier_excess_after_path_ready_ps": (
+                max(0, p4_start - path_ready)
+                if p4_start is not None and path_ready is not None else None
+            ),
+        })
+
+    def _record_slot_timing(self, slot: _Slot) -> None:
+        p4_start = slot.global_p4_start_ps
+        major_path_readiness = []
+        for path in slot.plan.major_paths:
+            ready_times = [
+                slot.local_p3_ready_ps[node]
+                for node in path.nodes
+                if node in slot.local_p3_ready_ps
+            ]
+            path_ready = max(ready_times) if ready_times else None
+            major_path_readiness.append({
+                "demand_id": path.demand_id,
+                "path": list(path.nodes),
+                "local_p3_ready_ps": path_ready,
+                "global_barrier_excess_ps": (
+                    max(0, p4_start - path_ready)
+                    if p4_start is not None and path_ready is not None else None
+                ),
+            })
+        self.slot_timing_records.append({
+            "slot_id": slot.slot_id,
+            "planned_ps": slot.started_at_ps,
+            "generation_start_ps": slot.generation_start_ps,
+            "generation_end_ps": slot.generation_end_ps,
+            "plan_receipt_ps_by_node": dict(slot.plan_receipt_ps),
+            "elementary_success_ps_by_lane": dict(slot.elementary_success_ps),
+            "local_p3_ready_ps_by_node": dict(slot.local_p3_ready_ps),
+            "major_path_p3_readiness": major_path_readiness,
+            "global_p4_start_ps": p4_start,
+            "global_wait_after_earliest_success_ps": (
+                p4_start - min(slot.elementary_success_ps.values())
+                if p4_start is not None and slot.elementary_success_ps else None
+            ),
+            "global_wait_after_latest_success_ps": (
+                p4_start - max(slot.elementary_success_ps.values())
+                if p4_start is not None and slot.elementary_success_ps else None
+            ),
+            "post_generation_control_wait_ps": (
+                p4_start - slot.generation_end_ps
+                if p4_start is not None else None
+            ),
+        })
+
+    def _timing_diagnostics(self) -> dict:
+        barrier_excess = [
+            record["global_barrier_excess_after_path_ready_ps"]
+            for record in self.delivery_timing_records
+            if record["global_barrier_excess_after_path_ready_ps"] is not None
+        ]
+        oldest_delivery_age = [
+            record["oldest_pair_age_at_delivery_ps"]
+            for record in self.delivery_timing_records
+            if record["oldest_pair_age_at_delivery_ps"] is not None
+        ]
+        post_generation_control_wait = [
+            record["post_generation_control_wait_ps"]
+            for record in self.delivery_timing_records
+            if record["post_generation_control_wait_ps"] is not None
+        ]
+        path_barrier_excess = [
+            path["global_barrier_excess_ps"]
+            for slot in self.slot_timing_records
+            for path in slot["major_path_p3_readiness"]
+            if path["global_barrier_excess_ps"] is not None
+        ]
+        return {
+            "slots": self.slot_timing_records,
+            "deliveries": self.delivery_timing_records,
+            "summary": {
+                "delivered_pairs_timed": len(self.delivery_timing_records),
+                "mean_global_barrier_excess_after_path_ready_ps": (
+                    sum(barrier_excess) / len(barrier_excess)
+                    if barrier_excess else None
+                ),
+                "max_global_barrier_excess_after_path_ready_ps": (
+                    max(barrier_excess) if barrier_excess else None
+                ),
+                "mean_oldest_pair_age_at_delivery_ps": (
+                    sum(oldest_delivery_age) / len(oldest_delivery_age)
+                    if oldest_delivery_age else None
+                ),
+                "max_oldest_pair_age_at_delivery_ps": (
+                    max(oldest_delivery_age) if oldest_delivery_age else None
+                ),
+                "mean_post_generation_control_wait_ps": (
+                    sum(post_generation_control_wait) / len(post_generation_control_wait)
+                    if post_generation_control_wait else None
+                ),
+                "max_post_generation_control_wait_ps": (
+                    max(post_generation_control_wait)
+                    if post_generation_control_wait else None
+                ),
+                "mean_global_barrier_excess_after_major_path_ready_ps": (
+                    sum(path_barrier_excess) / len(path_barrier_excess)
+                    if path_barrier_excess else None
+                ),
+                "max_global_barrier_excess_after_major_path_ready_ps": (
+                    max(path_barrier_excess) if path_barrier_excess else None
+                ),
+            },
+        }
 
     def _free_memory_indices(self) -> dict[str, list[int]]:
         return {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 from typing import ClassVar, Mapping, Any
 
@@ -148,6 +149,11 @@ class ConcurrentPairWorkload(Workload):
         repr=False,
         compare=False,
     )
+    topology_override: Mapping[str, Any] | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         if self.num_nodes < 2 or not 0 <= self.qdc_node_index < self.num_nodes:
@@ -217,6 +223,11 @@ class ConcurrentPairWorkload(Workload):
         ]
 
     def topology(self, adaptive_memory: int) -> dict:
+        if self.topology_override is not None:
+            config = copy.deepcopy(dict(self.topology_override))
+            for template in config.get("templates", {}).values():
+                template["adaptive_max_memory"] = adaptive_memory
+            return config
         generator = (
             generate_linear_topology
             if self.topology_type == "linear"

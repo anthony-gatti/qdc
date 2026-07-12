@@ -28,6 +28,7 @@ from backends.sequence.qcast_scheduler import (
 from backends.sequence.runtime import SequenceRuntime
 from backends.sequence.qcast_topology import expand_qcast_parallel_links
 from common import SECOND
+from topology import SPEED_OF_LIGHT, generate_linear_topology
 from workloads.concurrent_pairs import (
     ConcurrentPairSpec,
     ConcurrentPairWorkload,
@@ -303,6 +304,20 @@ class QCASTSequenceIntegrationTest(unittest.TestCase):
             ),
             0,
         )
+        timing = diagnostics["timing"]
+        self.assertEqual(timing["summary"]["delivered_pairs_timed"], 1)
+        self.assertGreater(
+            timing["deliveries"][0]["oldest_pair_age_at_generation_window_close_ps"],
+            0,
+        )
+        self.assertGreaterEqual(
+            timing["deliveries"][0]["post_generation_control_wait_ps"],
+            0,
+        )
+        self.assertEqual(
+            timing["slots"][0]["major_path_p3_readiness"][0]["path"],
+            ["router_0", "router_1"],
+        )
         self.assertTrue(all(
             state["plan_slots"]
             for state in diagnostics["control_state_by_node"].values()
@@ -346,6 +361,76 @@ class QCASTSequenceIntegrationTest(unittest.TestCase):
             max(diagnostics["scheduled_lane_usage_by_link"]["router_0|router_1"].values()),
             diagnostics["counters"]["slots_started"],
         )
+
+    def test_central_p4_barrier_can_outwait_a_local_path(self):
+        normal_distance_m = 1_000.0
+        remote_distance_m = 1_000_000.0
+        topology = generate_linear_topology(
+            8,
+            inter_node_distance_m=normal_distance_m,
+            memo_size=8,
+            adaptive_max_memory=0,
+            memory_fidelity=0.99,
+            memory_efficiency=1.0,
+            coherence_time_s=0.002,
+            gate_fidelity=0.99,
+            measurement_fidelity=0.99,
+            swapping_success_probability=0.9,
+            stop_time_s=0.08,
+            qdc_node_index=0,
+            encoding_type="single_heralded",
+            formalism="bell_diagonal",
+            seed=31,
+        )
+        link_distances = [normal_distance_m] * 6 + [remote_distance_m]
+        for channel in topology["qchannels"]:
+            if channel["destination"] == "BSM_6_7":
+                channel["distance"] = remote_distance_m / 2
+        for channel in topology["cchannels"]:
+            source, destination = channel["source"], channel["destination"]
+            if source.startswith("router_") and destination.startswith("router_"):
+                left, right = sorted((
+                    int(source.split("_")[1]),
+                    int(destination.split("_")[1]),
+                ))
+                channel["delay"] = sum(link_distances[left:right]) / SPEED_OF_LIGHT
+            elif source == "BSM_6_7" or destination == "BSM_6_7":
+                channel["delay"] = remote_distance_m / (2 * SPEED_OF_LIGHT)
+
+        workload = ConcurrentPairWorkload(
+            num_requests=1,
+            seed=31,
+            num_nodes=8,
+            qdc_node_index=0,
+            topology_type="linear",
+            memories_per_node=8,
+            coherence_time_s=0.002,
+            simulation_end_time_s=0.08,
+            request_override=(ConcurrentPairSpec(
+                0,
+                "router_0",
+                "router_1",
+                int(0.01 * SECOND),
+                int(0.07 * SECOND),
+                fidelity_threshold=0.26,
+            ),),
+            topology_override=topology,
+        )
+        result, diagnostics = self._run(
+            workload,
+            QCAST(
+                edge_width=1,
+                generation_window_ps=int(0.001 * SECOND),
+                control_processing_delay_ps=int(0.0001 * SECOND),
+                link_state_hops=1,
+                max_major_paths=1,
+                max_hops=8,
+            ),
+        )
+
+        self.assertEqual((result.num_requests, result.num_success), (1, 0))
+        path_timing = diagnostics["timing"]["slots"][0]["major_path_p3_readiness"][0]
+        self.assertGreater(path_timing["global_barrier_excess_ps"], int(0.004 * SECOND))
 
     def test_concurrent_pair_workload_remains_usable_by_odo(self):
         start = int(0.005 * SECOND)

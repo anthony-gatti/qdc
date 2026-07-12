@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from sequence.entanglement_management.generation import EntanglementGenerationA
+from sequence.resource_management.memory_manager import MemoryInfo
+from sequence.resource_management.resource_manager import ResourceManager
 from sequence.topology.node import BSMNode, QuantumRouter
 from sequence.topology.router_net_topo import RouterNetTopo
 from sequence.topology.topology import Topology as Topo
@@ -30,9 +33,29 @@ class QCASTQuantumRouter(QuantumRouter):
             gate_fid,
             meas_fid,
         )
+        self.resource_manager = QCASTResourceManager(self, self.memo_arr_name)
         ensure_parallel_metrics(self)
         self.qcast_control = QCASTControlProtocol(self)
         self.protocols.append(self.qcast_control)
+
+
+class QCASTResourceManager(ResourceManager):
+    """Native resource manager with a Q-CAST elementary-success observer."""
+
+    def update(self, protocol, memory, state: str) -> None:
+        super().update(protocol, memory, state)
+        if (
+            state == MemoryInfo.ENTANGLED
+            and isinstance(protocol, EntanglementGenerationA)
+            and protocol.primary
+            and hasattr(memory, "qcast_slot_id")
+        ):
+            self.owner.qcast_control.record_elementary_success(
+                memory.qcast_slot_id,
+                memory.qcast_lane_id,
+                self.owner.timeline.now(),
+                memory.fidelity,
+            )
 
 
 class QCASTRouterNetTopo(RouterNetTopo):

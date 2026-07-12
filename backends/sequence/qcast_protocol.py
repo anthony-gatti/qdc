@@ -33,6 +33,21 @@ class QCASTControlProtocol(Protocol):
     def configure(self, scheduler) -> None:
         self.scheduler = scheduler
 
+    def record_elementary_success(
+        self,
+        slot_id: int,
+        lane_id: str,
+        time_ps: int,
+        fidelity: float,
+    ) -> None:
+        if self.scheduler is not None:
+            self.scheduler.record_elementary_success(
+                slot_id,
+                lane_id,
+                time_ps,
+                fidelity,
+            )
+
     def received_message(self, src: str, msg: QCASTMessage) -> None:
         if msg.msg_type is QCASTMessageType.PLAN:
             self.plan_by_slot[msg.slot_id] = msg.payload

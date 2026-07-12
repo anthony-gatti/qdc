@@ -41,6 +41,10 @@ does not create hardware.
 allocation, control messages, rule installation, recovery selection, and swap
 sequencing. The workload sees only the shared demand/callback contract.
 
+`experiments/qcast_control_timing.md` records timing instrumentation for the
+current centralized baseline and the regression scenario for the distributed
+P3/P4 port.
+
 ## Deliberate differences and current limits
 
 - Physical generation, loss, detector behavior, memory decoherence, classical
