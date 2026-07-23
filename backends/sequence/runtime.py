@@ -42,7 +42,7 @@ class SequenceRuntime:
             and workload.sequence_adapter not in {"concurrent_pairs", "qpq"}
         ):
             raise NotImplementedError(
-                "Q-CAST currently supports only concurrent_pairs and QPQ workloads"
+                "Q-CAST-family algorithms currently support only concurrent_pairs and QPQ workloads"
             )
         adaptive_memory = getattr(algorithm, "adaptive_max_memory", 0)
         topology_config = workload.topology(adaptive_memory=adaptive_memory)

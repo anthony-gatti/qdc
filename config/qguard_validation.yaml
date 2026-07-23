@@ -1,0 +1,45 @@
+experiment:
+  algorithms: [qcast_distributed, qguard]
+  seeds: [8]
+  simulation_end_time_s: 1.2
+
+workload:
+  name: qpq
+  database_size_log: 1
+  num_clients: 1
+  queries_per_client: 1
+  start_offset_s: 0.005
+  request_period_s: 1.0
+  round_deadline_s: 0.5
+  transaction_duration_s: 1.0
+  fidelity_threshold: 0.8
+
+algorithm:
+  edge_width: 4
+  generation_window_s: 0.005
+  control_processing_delay_s: 0.0001
+  swap_success_probability: 1.0
+  link_state_hops: 3
+  recovery_paths_per_segment: 1
+  max_recovery_paths_per_major: 8
+  max_major_paths: 1
+  max_hops: 4
+  max_purification_rounds: 20
+
+hardware:
+  link_fidelity: 0.9
+  memory_efficiency: 1.0
+  memory_coherence_time_s: 5.0
+  memories_per_node: 16
+  gate_fidelity: 1.0
+  measurement_fidelity: 1.0
+  swapping_success_probability: 1.0
+  link_parallelism: 4
+
+topology:
+  type: linear
+  num_nodes: 4
+  inter_node_distance_m: 1000.0
+  qdc_node_index: 0
+  random_seed: 8
+  extra_mesh_edges: 0

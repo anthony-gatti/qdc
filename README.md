@@ -35,12 +35,19 @@ All supported algorithms use the same SeQUeNCe physical topology and common
 | Uniform Continuous Protocol | `ucp` | ACP without adaptive probability updates; retained for paper comparisons. |
 | Q-CAST, centralized control | `qcast` | Historical centrally released P3/P4 control profile for reproducibility. |
 | Q-CAST, paper-local control | `qcast_distributed` | Recommended Q-CAST profile. It uses explicit `k`-hop link-state messages and path-local P4 release with XOR recovery. |
+| Q-GUARD | `qguard` | Fidelity-aware, paper-local Q-CAST extension with equal-split purification planning, EXG recovery ranking, physical BBPSSW, and strict final qualification. |
 
 Q-CAST currently implements the no-purification algorithm. Its P2 plan is
 deterministic from globally consistent topology and demand inputs, while its
 dynamic P3/P4 link-state and swapping decisions observe the paper's locality
 constraint. See [algorithms/qcast/README.md](algorithms/qcast/README.md) for
 the exact SeQUeNCe boundary and known modeling limits.
+
+Q-GUARD implements the paper's base equal-split variant. It extends the
+paper-local Q-CAST control path without adding a global link-state round, then
+executes purification through SeQUeNCe's official Bell-diagonal BBPSSW
+protocol. See [algorithms/qguard/README.md](algorithms/qguard/README.md) for
+the algorithm/runtime boundary and deliberate realistic-model differences.
 
 ## Workloads And Topologies
 
@@ -80,7 +87,8 @@ qdc/
 |- algorithms/              Routing algorithm plugins and registry
 |  |- acp/                  ACP and UCP configuration
 |  |- odo/                  Shortest-path on-demand baseline
-|  `- qcast/                SeQUeNCe-independent Q-CAST planner
+|  |- qcast/                SeQUeNCe-independent Q-CAST planner
+|  `- qguard/               Q-GUARD configuration and fidelity-planning math
 |- workloads/               QPQ, single-pair, and concurrent-pair state machines
 |- backends/sequence/       SeQUeNCe runtime, adapters, protocols, and schedulers
 |- experiments/             Generic, paper, Q-CAST, and regime-study runners
@@ -173,13 +181,18 @@ Run the full test suite:
 
 `sweep2d.py` remains the ODO/ACP characterization runner. Use
 `experiments/run.py` for configuration-driven comparisons that include
-Q-CAST.
+Q-CAST and Q-GUARD. A focused Q-GUARD purification check is available as:
+
+```bash
+/home/amg671/.conda/envs/qdc/bin/python experiments/run.py \
+  --config config/qguard_validation.yaml \
+  --output /tmp/qdc_qguard_validation
+```
 
 ## Next Steps
 
-- Add the next routing algorithm, beginning with Q-GUARD or another
-  fidelity-aware policy, through the common algorithm registry and result
-  schema.
+- Benchmark Q-GUARD against ODO, ACP, and paper-local Q-CAST in fidelity-bound
+  QPQ regimes with matched physical parallelism.
 - Extend QPQ evaluation to controlled ring and larger path-diverse topologies,
   then evaluate concurrent client traffic rather than only well-spaced queries.
 - Add realistic topology imports and hardware sensitivity studies.

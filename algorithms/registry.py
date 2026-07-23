@@ -9,6 +9,7 @@ from algorithms.acp import AdaptiveContinuous
 from algorithms.base import RoutingAlgorithm
 from algorithms.odo import ShortestPathOnDemand
 from algorithms.qcast import QCAST, QCAST_CONTROL_PAPER_DISTRIBUTED
+from algorithms.qguard import QGUARD
 
 
 AlgorithmFactory = Callable[[Mapping[str, Any]], RoutingAlgorithm]
@@ -83,6 +84,23 @@ def _qcast_distributed_factory(config: Mapping[str, Any]) -> RoutingAlgorithm:
         max_major_paths=algorithm.max_major_paths,
         max_hops=algorithm.max_hops,
         control_mode=QCAST_CONTROL_PAPER_DISTRIBUTED,
+    )
+
+
+@register_algorithm("qguard")
+def _qguard_factory(config: Mapping[str, Any]) -> RoutingAlgorithm:
+    algorithm = _qcast_factory(config)
+    return QGUARD(
+        edge_width=algorithm.edge_width,
+        generation_window_ps=algorithm.generation_window_ps,
+        control_processing_delay_ps=algorithm.control_processing_delay_ps,
+        swap_success_probability=algorithm.swap_success_probability,
+        link_state_hops=algorithm.link_state_hops,
+        recovery_paths_per_segment=algorithm.recovery_paths_per_segment,
+        max_recovery_paths_per_major=algorithm.max_recovery_paths_per_major,
+        max_major_paths=algorithm.max_major_paths,
+        max_hops=algorithm.max_hops,
+        max_purification_rounds=int(config.get("max_purification_rounds", 20)),
     )
 
 
