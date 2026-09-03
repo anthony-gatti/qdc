@@ -1134,7 +1134,11 @@ class QCASTDemandScheduler:
                     ]),
                 ))
                 if stage < len(nodes) - 2:
-                    swap_time += int(self.routers[nodes[stage]].cchannels[nodes[stage + 1]].delay) + 1
+                    middle = self.routers[nodes[stage]]
+                    swap_time += max(
+                        int(middle.cchannels[nodes[0]].delay),
+                        int(middle.cchannels[nodes[stage + 1]].delay),
+                    ) + 1
             final_middle = self.routers[nodes[-2]]
             check_time = swap_time + max(
                 int(final_middle.cchannels[nodes[0]].delay),

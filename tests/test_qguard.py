@@ -7,6 +7,8 @@ from unittest.mock import patch
 
 from sequence.resource_management.memory_manager import MemoryInfo
 
+from algorithms.qcast import QCAST, QCAST_CONTROL_PAPER_DISTRIBUTED
+from algorithms.qcast_e2e import QCASTE2E
 from algorithms.qguard import (
     QGUARD,
     QGUARDHopPlan,
@@ -190,6 +192,73 @@ class QGUARDSequenceTest(unittest.TestCase):
             record["p4_start_ps"] is not None
             for record in diagnostics["timing"]["deliveries"]
         ))
+        self.assertTrue(all(diagnostics["all_memories_raw_at_end"].values()))
+
+    def test_qcast_e2e_preserves_qcast_decision_then_purifies(self):
+        start = int(0.005 * SECOND)
+        workload = ConcurrentPairWorkload(
+            num_requests=1,
+            seed=18,
+            num_nodes=4,
+            qdc_node_index=0,
+            topology_type="linear",
+            inter_node_distance_m=1_000,
+            memories_per_node=24,
+            memory_fidelity=0.9,
+            memory_efficiency=1.0,
+            coherence_time_s=5.0,
+            gate_fidelity=1.0,
+            measurement_fidelity=1.0,
+            swapping_success_probability=1.0,
+            link_parallelism=4,
+            simulation_end_time_s=0.12,
+            request_override=(ConcurrentPairSpec(
+                0,
+                "router_0",
+                "router_3",
+                start,
+                int(0.1 * SECOND),
+                pair_count=1,
+                fidelity_threshold=0.8,
+            ),),
+        )
+        common = dict(
+            edge_width=4,
+            generation_window_ps=int(0.005 * SECOND),
+            control_processing_delay_ps=0,
+            swap_success_probability=1.0,
+            link_state_hops=3,
+            max_major_paths=1,
+            max_hops=4,
+        )
+        _qcast_result, qcast_diagnostics = self._run(workload, QCAST(
+            **common,
+            control_mode=QCAST_CONTROL_PAPER_DISTRIBUTED,
+        ))
+        result, diagnostics = self._run(workload, QCASTE2E(**common))
+
+        request = result.request_results[0]
+        counters = diagnostics["counters"]
+        self.assertTrue(request.success)
+        self.assertGreaterEqual(request.fidelity, 0.8)
+        self.assertGreater(counters["qguard_end_to_end_purification_attempts"], 0)
+        self.assertGreater(counters["qguard_purification_attempts"], 0)
+        self.assertNotIn("qguard", diagnostics)
+        self.assertFalse(diagnostics["qcast_e2e"]["per_hop_fidelity_planning"])
+        self.assertTrue(all(
+            event["purpose"] == "end_to_end"
+            for event in diagnostics["qcast_e2e"]["purification_events"]
+        ))
+        qcast_first = qcast_diagnostics["distributed_decisions"][0]
+        qcast_e2e_first = diagnostics["distributed_decisions"][0]
+        for field in (
+            "major_path_id",
+            "decision_lane_ids",
+            "visible_lane_ids",
+            "visible_lane_states",
+            "selections",
+        ):
+            self.assertEqual(qcast_first[field], qcast_e2e_first[field])
         self.assertTrue(all(diagnostics["all_memories_raw_at_end"].values()))
 
     def test_recovery_route_repairs_forced_major_link_failure(self):

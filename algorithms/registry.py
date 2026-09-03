@@ -7,8 +7,10 @@ from typing import Any
 
 from algorithms.acp import AdaptiveContinuous
 from algorithms.base import RoutingAlgorithm
+from algorithms.dfer import DFER
 from algorithms.odo import ShortestPathOnDemand
 from algorithms.qcast import QCAST, QCAST_CONTROL_PAPER_DISTRIBUTED
+from algorithms.qcast_e2e import QCASTE2E
 from algorithms.qguard import QGUARD
 
 
@@ -101,6 +103,47 @@ def _qguard_factory(config: Mapping[str, Any]) -> RoutingAlgorithm:
         max_major_paths=algorithm.max_major_paths,
         max_hops=algorithm.max_hops,
         max_purification_rounds=int(config.get("max_purification_rounds", 20)),
+    )
+
+
+@register_algorithm("qcast_e2e")
+def _qcast_e2e_factory(config: Mapping[str, Any]) -> RoutingAlgorithm:
+    algorithm = _qcast_factory(config)
+    return QCASTE2E(
+        edge_width=algorithm.edge_width,
+        generation_window_ps=algorithm.generation_window_ps,
+        control_processing_delay_ps=algorithm.control_processing_delay_ps,
+        swap_success_probability=algorithm.swap_success_probability,
+        link_state_hops=algorithm.link_state_hops,
+        recovery_paths_per_segment=algorithm.recovery_paths_per_segment,
+        max_recovery_paths_per_major=algorithm.max_recovery_paths_per_major,
+        max_major_paths=algorithm.max_major_paths,
+        max_hops=algorithm.max_hops,
+        max_purification_rounds=int(config.get("max_purification_rounds", 20)),
+    )
+
+
+@register_algorithm("dfer")
+def _dfer_factory(config: Mapping[str, Any]) -> RoutingAlgorithm:
+    processing_delay_ps = config.get("control_processing_delay_ps")
+    if processing_delay_ps is None:
+        processing_delay_ps = int(
+            float(config.get("control_processing_delay_s", 0.0001)) * 10**12
+        )
+    retry_delay_ps = config.get("resource_retry_delay_ps")
+    if retry_delay_ps is None:
+        retry_delay_ps = int(
+            float(config.get("resource_retry_delay_s", 0.0001)) * 10**12
+        )
+    return DFER(
+        cutoff_fidelity=float(config.get("cutoff_fidelity", 0.7)),
+        max_purification_rounds=int(config.get("max_purification_rounds", 20)),
+        control_processing_delay_ps=int(processing_delay_ps),
+        resource_retry_delay_ps=int(retry_delay_ps),
+        swap_success_probability=float(
+            config.get("swap_success_probability", 0.9)
+        ),
+        max_hops=int(config.get("max_hops", 64)),
     )
 
 

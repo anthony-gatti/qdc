@@ -21,15 +21,40 @@ from workloads.qpq import QPQTransaction
 def _uses_slot_scheduler(algorithm) -> bool:
     return getattr(getattr(algorithm, "config", None), "kind", None) in {
         "qcast",
+        "qcast_e2e",
         "qguard",
     }
 
 
-def _create_slot_scheduler(network_topology, algorithm, controller_node):
+def _uses_demand_scheduler(algorithm) -> bool:
+    return _uses_slot_scheduler(algorithm) or getattr(
+        getattr(algorithm, "config", None),
+        "kind",
+        None,
+    ) == "dfer"
+
+
+def _create_demand_scheduler(network_topology, algorithm, controller_node):
+    if getattr(algorithm.config, "kind", None) == "dfer":
+        from backends.sequence.dfer_scheduler import DFERDemandScheduler
+
+        return DFERDemandScheduler(
+            network_topology,
+            algorithm,
+            controller_node,
+        )
     if getattr(algorithm.config, "kind", None) == "qguard":
         from backends.sequence.qguard_scheduler import QGUARDDemandScheduler
 
         return QGUARDDemandScheduler(
+            network_topology,
+            algorithm,
+            controller_node,
+        )
+    if getattr(algorithm.config, "kind", None) == "qcast_e2e":
+        from backends.sequence.qcast_e2e_scheduler import QCASTE2EDemandScheduler
+
+        return QCASTE2EDemandScheduler(
             network_topology,
             algorithm,
             controller_node,
@@ -106,8 +131,8 @@ class QPQSequenceAdapter(SequenceWorkloadAdapter):
     def __init__(self, network_topology, workload, algorithm_name: str, served_path_observer=None, algorithm=None):
         super().__init__(network_topology, workload, algorithm_name, served_path_observer, algorithm)
         routers = network_topology.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER)
-        if _uses_slot_scheduler(algorithm):
-            self.scheduler = _create_slot_scheduler(
+        if _uses_demand_scheduler(algorithm):
+            self.scheduler = _create_demand_scheduler(
                 network_topology,
                 algorithm,
                 workload.controller_node,
@@ -208,8 +233,8 @@ class ConcurrentPairSequenceAdapter(SequenceWorkloadAdapter):
             for spec in workload.requests()
         ]
         routers = network_topology.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER)
-        if _uses_slot_scheduler(algorithm):
-            self.scheduler = _create_slot_scheduler(
+        if _uses_demand_scheduler(algorithm):
+            self.scheduler = _create_demand_scheduler(
                 network_topology,
                 algorithm,
                 workload.controller_node,

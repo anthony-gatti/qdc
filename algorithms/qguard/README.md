@@ -57,8 +57,13 @@ No SeQUeNCe source file is changed by this implementation.
   propagation, and purification messages.
 - The paper's symmetric ideal BBPSSW recurrence is used to plan raw-pair cost.
   Runtime purification uses the actual fidelities held by SeQUeNCe and can
-  fail stochastically. An underfilled route therefore receives lower EXG but
-  can still be attempted with its physically available pairs.
+  fail stochastically. It also follows the paper's greedy asymmetric Phase 5
+  rule, which repeatedly improves the highest-fidelity pair using another
+  available pair. Consequently, the symmetric `2^r` cost estimate is an EXG
+  planning heuristic rather than a guarantee that a width-feasible hop will
+  reach its target. An underfilled route receives lower EXG but can still be
+  attempted with its physically available pairs; strict final qualification
+  prevents any below-threshold result from being delivered.
 - When no width-feasible per-hop plan exists on an intact major path, Q-GUARD
   may swap an unqualified output and use the paper's final end-to-end
   purification stage. Recovery detours must remain width-feasible.

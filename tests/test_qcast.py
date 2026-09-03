@@ -653,6 +653,46 @@ class QCASTSequenceIntegrationTest(unittest.TestCase):
         ))
         self.assertTrue(all(diagnostics["all_memories_raw_at_end"].values()))
 
+    def test_long_swap_chain_waits_for_distant_endpoint_update(self):
+        start = int(0.005 * SECOND)
+        workload = ConcurrentPairWorkload(
+            num_requests=1,
+            seed=15,
+            num_nodes=5,
+            qdc_node_index=0,
+            topology_type="linear",
+            inter_node_distance_m=10_000,
+            memories_per_node=8,
+            memory_fidelity=0.99,
+            memory_efficiency=1.0,
+            swapping_success_probability=1.0,
+            simulation_end_time_s=0.08,
+            request_override=(ConcurrentPairSpec(
+                0,
+                "router_0",
+                "router_4",
+                start,
+                int(0.07 * SECOND),
+                fidelity_threshold=0.5,
+            ),),
+        )
+        result, diagnostics = self._run(
+            workload,
+            QCAST(
+                edge_width=1,
+                generation_window_ps=int(0.01 * SECOND),
+                swap_success_probability=1.0,
+                max_major_paths=1,
+                max_hops=5,
+                link_state_hops=4,
+                control_mode=QCAST_CONTROL_PAPER_DISTRIBUTED,
+            ),
+        )
+
+        self.assertEqual((result.num_requests, result.num_success), (1, 1))
+        self.assertEqual(diagnostics["counters"]["swaps_attempted"], 3)
+        self.assertTrue(all(diagnostics["all_memories_raw_at_end"].values()))
+
     def test_physical_recovery_lane_repairs_forced_major_link_failure(self):
         start = int(0.005 * SECOND)
         workload = ConcurrentPairWorkload(

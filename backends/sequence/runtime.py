@@ -14,11 +14,13 @@ from sequence.kernel.quantum_manager import QuantumManager
 from sequence.topology.router_net_topo import RouterNetTopo
 
 from algorithms.acp import AdaptiveContinuous
+from algorithms.dfer import DFER
 from algorithms.odo import ShortestPathOnDemand
 from algorithms.qcast import QCAST
 from backends.sequence.acp_protocol import AdaptiveReservation
 from backends.sequence.acp_topology import ACPRouterNetTopo
 from backends.sequence.configured_topology import ConfiguredRouterNetTopo
+from backends.sequence.dfer_topology import DFERRouterNetTopo
 from backends.sequence.parallel_links import (
     collect_parallel_link_diagnostics,
     expand_parallel_links,
@@ -38,11 +40,11 @@ class SequenceRuntime:
     def run(self, workload, algorithm) -> object:
         self._configure_sequence()
         if (
-            isinstance(algorithm, QCAST)
+            isinstance(algorithm, (QCAST, DFER))
             and workload.sequence_adapter not in {"concurrent_pairs", "qpq"}
         ):
             raise NotImplementedError(
-                "Q-CAST-family algorithms currently support only concurrent_pairs and QPQ workloads"
+                "Distributed schedulers currently support only concurrent_pairs and QPQ workloads"
             )
         adaptive_memory = getattr(algorithm, "adaptive_max_memory", 0)
         topology_config = workload.topology(adaptive_memory=adaptive_memory)
@@ -50,7 +52,7 @@ class SequenceRuntime:
             topology_config,
             int(getattr(workload, "link_parallelism", 1)),
         )
-        if isinstance(algorithm, QCAST):
+        if isinstance(algorithm, (QCAST, DFER)):
             for template in topology_config.get("templates", {}).values():
                 template.setdefault("EntanglementSwapping", {})[
                     "swapping_success_prob"
@@ -74,6 +76,8 @@ class SequenceRuntime:
             network_topo = ConfiguredRouterNetTopo(topology_config)
         elif isinstance(algorithm, QCAST):
             network_topo = QCASTRouterNetTopo(topology_config)
+        elif isinstance(algorithm, DFER):
+            network_topo = DFERRouterNetTopo(topology_config)
         else:
             raise TypeError(f"Unsupported algorithm: {algorithm!r}")
 
