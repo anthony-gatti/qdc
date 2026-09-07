@@ -84,6 +84,8 @@ class _PurificationOperation:
     kept: _Pair
     measured: _Pair
     started_at_ps: int
+    events: list[Event] = field(default_factory=list)
+    protocols: list[object] = field(default_factory=list)
 
 
 @dataclass
@@ -95,6 +97,8 @@ class _SwapOperation:
     current: str
     next_hop: str
     started_at_ps: int
+    events: list[Event] = field(default_factory=list)
+    protocols: list[object] = field(default_factory=list)
 
 
 @dataclass
@@ -603,8 +607,37 @@ class DFERDemandScheduler:
         kept: _Pair,
         measured: _Pair,
     ) -> None:
-        left, right = kept.left, kept.right
         operation_id = self._next_operation_id("pur")
+        operation = _PurificationOperation(
+            operation_id, context.demand.reservation_id, kept, measured,
+            self.timeline.now(),
+        )
+        self.purification_operations[operation_id] = operation
+        event = Event(
+            self.timeline.now() + self.algorithm.control_processing_delay_ps,
+            Process(self, "_begin_purification", [operation_id]),
+        )
+        operation.events.append(event)
+        self.timeline.schedule(event)
+
+    def _begin_purification(self, operation_id: str) -> None:
+        """Validate at execution time, before attaching native protocols."""
+        operation = self.purification_operations.get(operation_id)
+        if operation is None:
+            return
+        context = self.contexts[operation.reservation_id]
+        if context.terminal or self.timeline.now() >= context.demand.deadline_ps:
+            self._fail(context, "dfer_deadline")
+            return
+        kept, measured = operation.kept, operation.measured
+        fidelities = [self._pair_fidelity(kept), self._pair_fidelity(measured)]
+        if min(fidelities) <= 0.5:
+            self.purification_operations.pop(operation_id)
+            self._release_pair(measured)
+            self.counters["pumping_invalid_inputs"] += 1
+            self._restart_pair(context, "pumping_inputs_expired")
+            return
+        left, right = kept.left, kept.right
         left_protocol = BBPSSWProtocol.create(
             self.routers[left],
             operation_id + ".L",
@@ -637,6 +670,7 @@ class DFERDemandScheduler:
             (self.routers[left], left_protocol),
             (self.routers[right], right_protocol),
         ):
+            operation.protocols.append(protocol)
             router.protocols.append(protocol)
             for memory in protocol.memories:
                 memory.detach(memory.memory_array)
@@ -648,33 +682,24 @@ class DFERDemandScheduler:
             int(self.routers[left].cchannels[right].delay),
             int(self.routers[right].cchannels[left].delay),
         )
-        start = self.timeline.now() + self.algorithm.control_processing_delay_ps
-        completion = start + propagation + 1
-        self.purification_operations[operation_id] = _PurificationOperation(
-            operation_id,
-            context.demand.reservation_id,
-            kept,
-            measured,
-            self.timeline.now(),
-        )
+        completion = self.timeline.now() + propagation + 1
         self.counters["pumping_attempts"] += 1
         self.events.append({
             "event": "pumping_started",
             "time_ps": self.timeline.now(),
             "operation_id": operation_id,
             "demand_id": context.demand.demand_id,
-            "input_fidelities": [
-                self._pair_fidelity(kept),
-                self._pair_fidelity(measured),
-            ],
+            "input_fidelities": fidelities,
             "completion_ps": completion,
         })
-        self.timeline.schedule(Event(start, Process(left_protocol, "start", [])))
-        self.timeline.schedule(Event(start, Process(right_protocol, "start", [])))
-        self.timeline.schedule(Event(
+        left_protocol.start()
+        right_protocol.start()
+        event = Event(
             completion,
             Process(self, "_complete_purification", [operation_id]),
-        ))
+        )
+        operation.events.append(event)
+        self.timeline.schedule(event)
 
     def _complete_purification(self, operation_id: str) -> None:
         operation = self.purification_operations.pop(operation_id, None)
@@ -731,6 +756,9 @@ class DFERDemandScheduler:
         long_pair: _Pair,
         link_pair: _Pair,
     ) -> None:
+        if not self._pair_is_entangled(long_pair) or not self._pair_is_entangled(link_pair):
+            self._restart_pair(context, "swap_inputs_expired")
+            return
         current = context.current
         next_hop = context.selected_neighbor
         if next_hop is None:
@@ -793,7 +821,7 @@ class DFERDemandScheduler:
                 owner.resource_manager.memory_manager.get_info_by_memory(
                     memory
                 ).to_occupied()
-        self.swap_operations[operation_id] = _SwapOperation(
+        operation = _SwapOperation(
             operation_id,
             context.demand.reservation_id,
             long_pair,
@@ -801,7 +829,9 @@ class DFERDemandScheduler:
             current,
             next_hop,
             self.timeline.now(),
+            protocols=[protocol_a, protocol_left, protocol_right],
         )
+        self.swap_operations[operation_id] = operation
         self.counters["swaps_attempted"] += 1
         self.events.append({
             "event": "swap_started",
@@ -818,10 +848,12 @@ class DFERDemandScheduler:
             int(middle.cchannels[left_remote.name].delay),
             int(middle.cchannels[right_remote.name].delay),
         ) + 1
-        self.timeline.schedule(Event(
+        event = Event(
             completion,
             Process(self, "_complete_swap", [operation_id]),
-        ))
+        )
+        operation.events.append(event)
+        self.timeline.schedule(event)
 
     def _complete_swap(self, operation_id: str) -> None:
         operation = self.swap_operations.pop(operation_id, None)
@@ -1050,6 +1082,7 @@ class DFERDemandScheduler:
         if context.terminal:
             return
         context.terminal = True
+        self._cancel_pending_operations(context.demand.reservation_id)
         if context.long_pair is not None:
             self._release_pair(context.long_pair)
             context.long_pair = None
@@ -1085,6 +1118,35 @@ class DFERDemandScheduler:
             tuple(context.path),
             len(context.deliveries),
         )
+
+    def _cancel_pending_operations(self, reservation_id: int) -> None:
+        """Retire callbacks/protocols before releasing their memory claims.
+
+        Native result messages address uniquely named protocols. Removing those
+        protocols also prevents late messages from updating a reused memory.
+        """
+        for operations in (self.purification_operations, self.swap_operations):
+            for operation_id, operation in list(operations.items()):
+                if operation.reservation_id != reservation_id:
+                    continue
+                operations.pop(operation_id)
+                for event in operation.events:
+                    self.timeline.remove_event(event)
+                for protocol in operation.protocols:
+                    if protocol in protocol.owner.protocols:
+                        protocol.owner.protocols.remove(protocol)
+                    for memory in protocol.memories:
+                        if protocol in memory._observers:
+                            memory.detach(protocol)
+                            memory.attach(memory.memory_array)
+                pairs = (
+                    (operation.kept, operation.measured)
+                    if isinstance(operation, _PurificationOperation)
+                    else (operation.long_pair, operation.link_pair)
+                )
+                for pair in pairs:
+                    self._release_pair(pair)
+                self.counters["operations_cancelled"] += 1
 
     def _schedule_local_hop(self, context: _Context, time_ps: int) -> None:
         if context.terminal or time_ps >= context.demand.deadline_ps:
