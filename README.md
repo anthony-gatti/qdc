@@ -74,6 +74,16 @@ parameter `hardware.link_parallelism` creates the same number of physical
 link/BSM lanes for ODO, ACP, and Q-CAST; Q-CAST `edge_width` is a scheduling
 limit, not extra hardware.
 
+The physical topology is also the source of truth for swap success probability
+(`hardware.swapping_success_probability` in experiment configuration). The
+runtime resolves Q-CAST, Q-GUARD, Q-CAST-E2E, and DFER planner/executor settings
+from the instantiated routers; an algorithm's `swap_success_probability` no
+longer overrides the hardware. Configure deterministic swapping in the hardware
+section when reproducing idealized experiments. These planners currently accept
+one scalar probability, so heterogeneous router swap probabilities are rejected
+explicitly rather than silently replaced. Run diagnostics record the physical,
+requested algorithm, and resolved algorithm values under `swap_probability`.
+
 ## Current Evidence
 
 The current 30-seed regime study identifies real, configuration-dependent
