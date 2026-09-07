@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from dataclasses import replace
 
 import pytest
+from sequence.kernel.event import Event
+from sequence.kernel.process import Process
 
 from algorithms.dfer import (
     DFER,
@@ -16,6 +19,7 @@ from algorithms.dfer import (
 )
 from algorithms.registry import algorithm_names, create_algorithm
 from backends.sequence.runtime import SequenceRuntime
+from backends.sequence.dfer_scheduler import DFERDemandScheduler
 from common import SECOND
 from workloads.concurrent_pairs import ConcurrentPairSpec, ConcurrentPairWorkload
 from workloads.qpq import QPQWorkload
@@ -70,6 +74,98 @@ def test_dfer_is_registered_and_validates_configuration():
     assert algorithm.control_processing_delay_ps == 200_000_000
     with pytest.raises(ValueError):
         DFER(cutoff_fidelity=0.49)
+
+
+@pytest.mark.parametrize("coherence,processing,deadline", [
+    (0.0001, 0.0005, 0.05),
+    (5.0, 0.001, 0.013),
+    (5.0, 0.0001, 0.0108),
+    (0.001, 0.0005, 0.05),
+])
+def test_delayed_pumping_handles_expiration_and_deadlines(
+    tmp_path, monkeypatch, coherence, processing, deadline,
+):
+    # Inspect cleanup at failure, before runtime teardown can mask leaked state.
+    failures = []
+    original_fail = DFERDemandScheduler._fail
+
+    def checked_fail(self, context, *args, **kwargs):
+        protocols = [
+            protocol
+            for operations in (self.purification_operations, self.swap_operations)
+            for op in operations.values()
+            for protocol in op.protocols
+        ]
+        original_fail(self, context, *args, **kwargs)
+        reservation_id = context.demand.reservation_id
+        for operations in (self.purification_operations, self.swap_operations):
+            assert not any(
+                op.reservation_id == reservation_id for op in operations.values()
+            )
+        assert all(not indices for indices in self.claimed_memories.values())
+        for protocol in protocols:
+            assert protocol not in protocol.owner.protocols
+            assert all(protocol not in memory._observers for memory in protocol.memories)
+        failures.append(reservation_id)
+
+    monkeypatch.setattr(DFERDemandScheduler, "_fail", checked_fail)
+    workload = replace(
+        _pair_workload(nodes=4, destination=3, threshold=0.95, deadline_s=deadline),
+        coherence_time_s=coherence,
+        simulation_end_time_s=0.06,
+    )
+    runtime = SequenceRuntime(tmp_path)
+    result = runtime.run(workload, DFER(
+        swap_success_probability=1.0,
+        control_processing_delay_ps=int(processing * SECOND),
+    ))
+    assert failures
+    assert not result.request_results[0].success
+    assert result.request_results[0].failure_reason == "dfer_deadline"
+    diagnostics = runtime.last_diagnostics["workload_diagnostics"]
+    assert all(diagnostics["all_memories_raw_at_end"].values())
+    assert diagnostics["locality_invariants"]["all_claims_released"]
+
+
+@pytest.mark.parametrize("phase", ["purification", "swap"])
+def test_deadline_cancels_inflight_protocols_before_memory_reuse(tmp_path, monkeypatch, phase):
+    method = "_begin_purification" if phase == "purification" else "_start_swap"
+    original = getattr(DFERDemandScheduler, method)
+    cancelled = []
+
+    def expire_during_operation(self, *args):
+        original(self, *args)
+        operations = self.purification_operations if phase == "purification" else self.swap_operations
+        for operation in operations.values():
+            if operation.reservation_id == 1 and operation.protocols and not cancelled:
+                cancelled.append(operation)
+                # End the request after native start but before result messages.
+                self.timeline.schedule(Event(
+                    self.timeline.now() + 1, Process(self, "deadline", [1]),
+                ))
+
+    monkeypatch.setattr(DFERDemandScheduler, method, expire_during_operation)
+    workload = replace(
+        _pair_workload(nodes=4, destination=3, threshold=0.95, deadline_s=0.06),
+        num_requests=2,
+        memories_per_node=3,
+        simulation_end_time_s=0.07,
+        request_override=(
+            ConcurrentPairSpec(1, "router_0", "router_3", int(0.01 * SECOND), int(0.06 * SECOND), 1, 0.95),
+            ConcurrentPairSpec(2, "router_0", "router_3", int(0.02 * SECOND), int(0.06 * SECOND), 1, 0.95),
+        ),
+    )
+    runtime = SequenceRuntime(tmp_path)
+    result = runtime.run(workload, DFER(swap_success_probability=1.0))
+    assert cancelled
+    first, second = sorted(result.request_results, key=lambda request: request.request_id)
+    assert not first.success
+    assert second.success
+    for operation in cancelled:
+        for protocol in operation.protocols:
+            assert protocol not in protocol.owner.protocols
+            assert all(protocol not in memory._observers for memory in protocol.memories)
+    assert runtime.last_diagnostics["workload_diagnostics"]["counters"]["operations_cancelled"] == 1
 
 
 def test_dlfr_equalizes_the_remaining_werner_budget():
