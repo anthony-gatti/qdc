@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from dataclasses import replace
 from pathlib import Path
 
 from sequence.constants import BELL_DIAGONAL_STATE_FORMALISM
@@ -52,11 +53,6 @@ class SequenceRuntime:
             topology_config,
             int(getattr(workload, "link_parallelism", 1)),
         )
-        if isinstance(algorithm, (QCAST, DFER)):
-            for template in topology_config.get("templates", {}).values():
-                template.setdefault("EntanglementSwapping", {})[
-                    "swapping_success_prob"
-                ] = algorithm.swap_success_probability
         topology_path = self.output_dir / "topologies" / f"{algorithm.name}_topology.json"
         topology_path.parent.mkdir(parents=True, exist_ok=True)
         topology_path.write_text(json.dumps(topology_config, indent=2) + "\n")
@@ -81,6 +77,21 @@ class SequenceRuntime:
         else:
             raise TypeError(f"Unsupported algorithm: {algorithm!r}")
 
+        swap_probabilities = {
+            router.name: float(router.swapping_success_prob)
+            for router in network_topo.get_nodes_by_type(RouterNetTopo.QUANTUM_ROUTER)
+        }
+        requested_swap_probability = getattr(algorithm, "swap_success_probability", None)
+        if isinstance(algorithm, (QCAST, DFER)):
+            # These planners currently accept one network-wide swap probability.
+            # Resolve it from the actual hardware, including topology overrides.
+            probabilities = set(swap_probabilities.values())
+            if len(probabilities) != 1:
+                raise ValueError(
+                    f"{algorithm.name} currently requires uniform router swap probabilities"
+                )
+            algorithm = replace(algorithm, swap_success_probability=probabilities.pop())
+
         workload_adapter = create_sequence_workload_adapter(
             workload.sequence_adapter,
             network_topo,
@@ -98,6 +109,12 @@ class SequenceRuntime:
         teardown = self._teardown_residual_memories(network_topo)
         result = workload_adapter.collect()
         self.last_diagnostics = self._collect_diagnostics(network_topo, algorithm.name)
+        self.last_diagnostics["swap_probability"] = {
+            "source": "physical_topology",
+            "by_router": swap_probabilities,
+            "requested_algorithm_value": requested_swap_probability,
+            "resolved_algorithm_value": getattr(algorithm, "swap_success_probability", None),
+        }
         self.last_diagnostics["simulation_teardown"] = teardown
         self.last_diagnostics["parallel_links"] = collect_parallel_link_diagnostics(
             network_topo
